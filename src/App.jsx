@@ -2,7 +2,16 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 const CYCLING_POWER_SERVICE = 0x1818;
 const CYCLING_POWER_MEASUREMENT = 0x2a63;
-const CRANK_REVOLUTION_DATA_PRESENT = 1 << 3;
+const PEDAL_POWER_BALANCE_PRESENT = 1 << 0;
+const ACCUMULATED_TORQUE_PRESENT = 1 << 2;
+const WHEEL_REVOLUTION_DATA_PRESENT = 1 << 4;
+const CRANK_REVOLUTION_DATA_PRESENT = 1 << 5;
+const EXTREME_FORCE_MAGNITUDES_PRESENT = 1 << 6;
+const EXTREME_TORQUE_MAGNITUDES_PRESENT = 1 << 7;
+const EXTREME_ANGLES_PRESENT = 1 << 8;
+const TOP_DEAD_SPOT_ANGLE_PRESENT = 1 << 9;
+const BOTTOM_DEAD_SPOT_ANGLE_PRESENT = 1 << 10;
+const ACCUMULATED_ENERGY_PRESENT = 1 << 11;
 
 const initialMetrics = {
   watts: 0,
@@ -19,9 +28,9 @@ function readCyclingPowerMeasurement(value) {
   let offset = 4;
   let crank = null;
 
-  if (flags & (1 << 0)) offset += 1; // Pedal Power Balance
-  if (flags & (1 << 1)) offset += 2; // Accumulated Torque
-  if (flags & (1 << 2)) offset += 6; // Wheel Revolution Data
+  if (flags & PEDAL_POWER_BALANCE_PRESENT) offset += 1;
+  if (flags & ACCUMULATED_TORQUE_PRESENT) offset += 2;
+  if (flags & WHEEL_REVOLUTION_DATA_PRESENT) offset += 6;
 
   if (flags & CRANK_REVOLUTION_DATA_PRESENT && value.byteLength >= offset + 4) {
     crank = {
@@ -31,12 +40,12 @@ function readCyclingPowerMeasurement(value) {
     offset += 4;
   }
 
-  if (flags & (1 << 4)) offset += 4; // Extreme Force Magnitudes
-  if (flags & (1 << 5)) offset += 4; // Extreme Torque Magnitudes
-  if (flags & (1 << 6)) offset += 3; // Extreme Angles
-  if (flags & (1 << 7)) offset += 2; // Top Dead Spot Angle
-  if (flags & (1 << 8)) offset += 2; // Bottom Dead Spot Angle
-  if (flags & (1 << 9)) offset += 2; // Accumulated Energy
+  if (flags & EXTREME_FORCE_MAGNITUDES_PRESENT) offset += 4;
+  if (flags & EXTREME_TORQUE_MAGNITUDES_PRESENT) offset += 4;
+  if (flags & EXTREME_ANGLES_PRESENT) offset += 3;
+  if (flags & TOP_DEAD_SPOT_ANGLE_PRESENT) offset += 2;
+  if (flags & BOTTOM_DEAD_SPOT_ANGLE_PRESENT) offset += 2;
+  if (flags & ACCUMULATED_ENERGY_PRESENT) offset += 2;
 
   return { flags, watts, crank };
 }
@@ -87,13 +96,26 @@ export default function App() {
 
   async function connect(existingDevice = deviceRef.current) {
     setError('');
+
+    if (!window.isSecureContext) {
+      setError('Web Bluetooth braucht HTTPS oder localhost.');
+      setConnectionState('error');
+      return;
+    }
+
+    if (!navigator.bluetooth) {
+      setError('Dieser Browser stellt keine Web Bluetooth API bereit. Bitte Chrome, Chromium oder Edge verwenden.');
+      setConnectionState('error');
+      return;
+    }
+
     setConnectionState(existingDevice ? 'reconnecting' : 'scanning');
 
     try {
       const device =
         existingDevice ||
         (await navigator.bluetooth.requestDevice({
-          filters: [{ services: [CYCLING_POWER_SERVICE] }],
+          acceptAllDevices: true,
           optionalServices: [CYCLING_POWER_SERVICE],
         }));
 
