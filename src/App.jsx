@@ -8,6 +8,8 @@ const SENSOR_LOCATION = 0x2a5d;
 const START_OFFSET_COMPENSATION = 0x0c;
 const CONTROL_POINT_RESPONSE = 0x20;
 const RESPONSE_SUCCESS = 0x01;
+const GPS_STOP_SPEED_KMH = 5;
+const GPS_DRIFT_DISTANCE_KM = 0.015;
 const PEDAL_POWER_BALANCE_PRESENT = 1 << 0;
 const ACCUMULATED_TORQUE_PRESENT = 1 << 2;
 const WHEEL_REVOLUTION_DATA_PRESENT = 1 << 4;
@@ -373,6 +375,13 @@ export default function App() {
           }
 
           if (accuracy > 40 || distanceDelta > 0.5) {
+            distanceDelta = 0;
+          }
+        }
+
+        if ((speedKmh ?? 0) < GPS_STOP_SPEED_KMH) {
+          speedKmh = 0;
+          if (distanceDelta < GPS_DRIFT_DISTANCE_KM) {
             distanceDelta = 0;
           }
         }
