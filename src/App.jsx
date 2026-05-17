@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import RideView from './RideView';
 import HistoryView from './HistoryView';
 import SettingsView from './SettingsView';
-import { distanceInKm, powerZone } from './utils';
+import { distanceInKm, powerZone, formatDateTime } from './utils';
 
 // ─── BLE constants ────────────────────────────────────────────────────────────
 const CYCLING_POWER_SERVICE      = 0x1818;
@@ -109,8 +109,17 @@ export default function App() {
   const [deviceName, setDeviceName] = useState('');
   const [error, setError] = useState('');
   const [lastPacketAt, setLastPacketAt] = useState(null);
-  const [calibrationState, setCalibrationState] = useState('unknown');
-  const [calibrationMessage, setCalibrationMessage] = useState('Noch nicht kalibriert');
+  const [lastCalibration, setLastCalibration] = useState(() => {
+    const val = localStorage.getItem('xpedo-last-calibration');
+    return val ? parseInt(val, 10) : null;
+  });
+  const [calibrationState, setCalibrationState] = useState(
+    localStorage.getItem('xpedo-last-calibration') ? 'success' : 'unknown'
+  );
+  const [calibrationMessage, setCalibrationMessage] = useState(() => {
+    const last = localStorage.getItem('xpedo-last-calibration');
+    return last ? `Zuletzt: ${formatDateTime(parseInt(last, 10))}` : 'Noch nicht kalibriert';
+  });
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [lcdDarkMode, setLcdDarkMode] = useState(() => localStorage.getItem('xpedo-lcd-dark') === '1');
   const [ftp, setFtp] = useState(() => parseInt(localStorage.getItem('xpedo-ftp') || '250', 10));
@@ -200,7 +209,7 @@ export default function App() {
         cp.addEventListener('characteristicvaluechanged', handleControlPoint);
         await cp.startNotifications();
         setCalibrationState('ready');
-        setCalibrationMessage('Bereit fuer Nullstellen-Kalibrierung');
+        setCalibrationMessage(lastCalibration ? `Zuletzt: ${formatDateTime(lastCalibration)} · Bereit` : 'Bereit fuer Nullstellen-Kalibrierung');
       } catch {
         controlPointRef.current = null;
         setCalibrationState('unsupported');
@@ -228,6 +237,11 @@ export default function App() {
           window.clearTimeout(timeout); calibrationResolverRef.current = null; reject(e);
         });
       });
+      if (result.success) {
+        const now = Date.now();
+        setLastCalibration(now);
+        localStorage.setItem('xpedo-last-calibration', String(now));
+      }
       setCalibrationState(result.success ? 'success' : 'error');
       setCalibrationMessage(result.message);
     } catch (e) {
