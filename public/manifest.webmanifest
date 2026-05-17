@@ -1,0 +1,19 @@
+{
+  "name": "Xpedo Power Dashboard",
+  "short_name": "Xpedo",
+  "description": "Bluetooth Cycling Power Dashboard fuer Xpedo Pedale",
+  "start_url": "/xpedo/",
+  "scope": "/xpedo/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#020617",
+  "theme_color": "#020617",
+  "icons": [
+    {
+      "src": "/xpedo/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

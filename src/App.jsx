@@ -79,12 +79,14 @@ export default function App() {
   const [deviceName, setDeviceName] = useState('');
   const [error, setError] = useState('');
   const [lastPacketAt, setLastPacketAt] = useState(null);
+  const [autoConnectAvailable, setAutoConnectAvailable] = useState(false);
 
   const deviceRef = useRef(null);
   const characteristicRef = useRef(null);
   const crankRef = useRef(null);
   const lastCadenceUpdateRef = useRef(0);
   const reconnectingRef = useRef(false);
+  const reconnectTimerRef = useRef(null);
 
   const connected = connectionState === 'connected';
   const reconnectVisible = connectionState === 'lost' || connectionState === 'error';
@@ -121,6 +123,7 @@ export default function App() {
 
       deviceRef.current = device;
       setDeviceName(device.name || 'Cycling Power Pedal');
+      localStorage.setItem('xpedo-auto-connect', '1');
       device.addEventListener('gattserverdisconnected', handleDisconnected);
 
       const server = await device.gatt.connect();
@@ -159,6 +162,13 @@ export default function App() {
 
   function handleDisconnected() {
     setConnectionState('lost');
+
+    if (localStorage.getItem('xpedo-auto-connect') === '1') {
+      window.clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = window.setTimeout(() => {
+        reconnect();
+      }, 1800);
+    }
   }
 
   function handleMeasurement(event) {
@@ -208,7 +218,37 @@ export default function App() {
   }, [lastPacketAt]);
 
   useEffect(() => {
+    let cancelled = false;
+
+    async function connectKnownDevice() {
+      if (!navigator.bluetooth?.getDevices || localStorage.getItem('xpedo-auto-connect') !== '1') return;
+
+      try {
+        const devices = await navigator.bluetooth.getDevices();
+        const knownPedal = devices.find((device) => {
+          const name = device.name?.toLowerCase() || '';
+          return name.includes('xpedo') || name.includes('omni') || name.includes('power');
+        });
+
+        if (!cancelled && knownPedal) {
+          setAutoConnectAvailable(true);
+          await connect(knownPedal);
+        }
+      } catch {
+        setAutoConnectAvailable(false);
+      }
+    }
+
+    connectKnownDevice();
+
     return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      window.clearTimeout(reconnectTimerRef.current);
       const characteristic = characteristicRef.current;
       if (characteristic) {
         characteristic.removeEventListener('characteristicvaluechanged', handleMeasurement);
@@ -319,7 +359,13 @@ export default function App() {
         </section>
 
         <footer className="flex min-h-10 items-center justify-between gap-4 text-xs font-medium text-slate-500">
-          <span>{connected ? 'Live Cycling Power Profile 0x1818 / 0x2A63' : 'HTTPS und WebBLE-Browser erforderlich'}</span>
+          <span>
+            {connected
+              ? 'Live Cycling Power Profile 0x1818 / 0x2A63'
+              : autoConnectAvailable
+                ? 'Automatische Wiederverbindung aktiv'
+                : 'HTTPS und WebBLE-Browser erforderlich'}
+          </span>
           <span>{lastPacketAt ? `Letztes Paket ${Math.max(0, Math.round((Date.now() - lastPacketAt) / 1000))}s` : 'Noch keine Daten'}</span>
         </footer>
 
