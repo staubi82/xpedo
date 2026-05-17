@@ -595,9 +595,9 @@ export default function App() {
   }, []);
 
   return (
-    <main className="h-[100dvh] overflow-hidden bg-zinc-950 p-1 text-zinc-100 antialiased sm:p-3">
+    <main className="h-[100svh] overflow-hidden bg-zinc-950 p-1 text-zinc-100 antialiased sm:p-3">
       <div className="mx-auto flex h-full w-full max-w-[460px] flex-col overflow-hidden rounded-[1rem] border border-zinc-700 bg-zinc-900 shadow-2xl shadow-black sm:rounded-[1.6rem]">
-        <div className="relative border-b border-black bg-black px-3 py-2 font-mono text-xs font-bold text-zinc-100 sm:text-sm">
+        <div className="relative border-b border-black bg-black px-3 py-1.5 font-mono text-xs font-bold text-zinc-100 sm:text-sm">
           <div className="flex items-center justify-between">
             <span>FAHRT</span>
             <div className="flex items-center gap-3">
@@ -688,12 +688,12 @@ export default function App() {
         </div>
 
         <section className={`relative min-h-0 flex-1 overflow-hidden bg-[#b9bdaf] text-black transition ${reconnectVisible || stale ? 'opacity-50' : ''}`}>
-          <div className="grid h-full grid-cols-2 grid-rows-[1.42fr_1fr_1fr_1fr_1fr_0.3fr] border-b border-black/70">
-            <div className="col-span-2 border-b border-black/70 p-2 sm:p-3">
+          <div className="grid h-full grid-cols-2 grid-rows-[1.05fr_1fr_1fr_1fr_1fr_0.28fr] border-b border-black/70">
+            <div className="col-span-2 border-b border-black/70 p-1.5 sm:p-2">
               <div className="font-mono text-[clamp(0.68rem,2.8vw,0.9rem)] font-black">WATT</div>
               <div className="flex items-end justify-center gap-2 font-mono tracking-normal">
-                <span className="text-[clamp(4rem,20vw,6.8rem)] font-black leading-none">{Math.max(0, metrics.watts)}</span>
-                <span className="pb-[0.38em] text-[clamp(1rem,4.2vw,1.7rem)] font-black">W</span>
+                <span className="text-[clamp(3.2rem,16vw,5.5rem)] font-black leading-none">{Math.max(0, metrics.watts)}</span>
+                <span className="pb-[0.32em] text-[clamp(0.9rem,3.8vw,1.45rem)] font-black">W</span>
               </div>
             </div>
 
@@ -812,7 +812,7 @@ export default function App() {
           )}
         </section>
 
-        <div className="grid grid-cols-3 border-t border-black bg-black px-3 py-2 font-mono text-[0.68rem] font-black text-zinc-200 sm:text-xs">
+        <div className="grid grid-cols-3 border-t border-black bg-black px-3 py-1.5 font-mono text-[0.65rem] font-black text-zinc-200 sm:text-xs">
           <button type="button" onClick={() => setMenuOpen(true)} className="text-left">
             OPTIONEN
           </button>
