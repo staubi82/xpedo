@@ -2,6 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 const CYCLING_POWER_SERVICE = 0x1818;
 const CYCLING_POWER_MEASUREMENT = 0x2a63;
+const CYCLING_POWER_CONTROL_POINT = 0x2a66;
+const START_OFFSET_COMPENSATION = 0x0c;
+const CONTROL_POINT_RESPONSE = 0x20;
+const RESPONSE_SUCCESS = 0x01;
 const PEDAL_POWER_BALANCE_PRESENT = 1 << 0;
 const ACCUMULATED_TORQUE_PRESENT = 1 << 2;
 const WHEEL_REVOLUTION_DATA_PRESENT = 1 << 4;
@@ -73,6 +77,21 @@ function powerZone(watts) {
   return { zone: 'Bereit', zoneColor: 'from-slate-500 to-slate-300', width: '8%' };
 }
 
+function controlPointResponseText(value) {
+  switch (value) {
+    case RESPONSE_SUCCESS:
+      return 'Kalibrierung abgeschlossen';
+    case 0x02:
+      return 'Kalibrierung nicht unterstuetzt';
+    case 0x03:
+      return 'Ungueltige Kalibrierparameter';
+    case 0x04:
+      return 'Kalibrierung fehlgeschlagen';
+    default:
+      return `Unbekannte Antwort 0x${value.toString(16).padStart(2, '0')}`;
+  }
+}
+
 export default function App() {
   const [metrics, setMetrics] = useState(initialMetrics);
   const [connectionState, setConnectionState] = useState('idle');
@@ -80,9 +99,13 @@ export default function App() {
   const [error, setError] = useState('');
   const [lastPacketAt, setLastPacketAt] = useState(null);
   const [autoConnectAvailable, setAutoConnectAvailable] = useState(false);
+  const [calibrationState, setCalibrationState] = useState('unknown');
+  const [calibrationMessage, setCalibrationMessage] = useState('Noch nicht kalibriert');
 
   const deviceRef = useRef(null);
   const characteristicRef = useRef(null);
+  const controlPointRef = useRef(null);
+  const calibrationResolverRef = useRef(null);
   const crankRef = useRef(null);
   const lastCadenceUpdateRef = useRef(0);
   const reconnectingRef = useRef(false);
@@ -134,6 +157,19 @@ export default function App() {
       characteristic.addEventListener('characteristicvaluechanged', handleMeasurement);
       await characteristic.startNotifications();
 
+      try {
+        const controlPoint = await service.getCharacteristic(CYCLING_POWER_CONTROL_POINT);
+        controlPointRef.current = controlPoint;
+        controlPoint.addEventListener('characteristicvaluechanged', handleControlPoint);
+        await controlPoint.startNotifications();
+        setCalibrationState('ready');
+        setCalibrationMessage('Bereit fuer Nullstellen-Kalibrierung');
+      } catch {
+        controlPointRef.current = null;
+        setCalibrationState('unsupported');
+        setCalibrationMessage('Kalibrierung vom Pedal nicht freigegeben');
+      }
+
       setConnectionState('connected');
       setLastPacketAt(Date.now());
     } catch (connectError) {
@@ -143,6 +179,45 @@ export default function App() {
           : connectError?.message || 'Bluetooth-Verbindung fehlgeschlagen.';
       setError(message);
       setConnectionState(deviceRef.current ? 'lost' : 'error');
+    }
+  }
+
+  async function calibratePedal() {
+    const controlPoint = controlPointRef.current;
+
+    if (!connected || !controlPoint) {
+      setCalibrationState('unsupported');
+      setCalibrationMessage('Control Point nicht verfuegbar');
+      return;
+    }
+
+    setCalibrationState('running');
+    setCalibrationMessage('Pedal ruhig halten...');
+
+    try {
+      const result = await new Promise((resolve, reject) => {
+        const timeout = window.setTimeout(() => {
+          calibrationResolverRef.current = null;
+          reject(new Error('Keine Antwort vom Pedal'));
+        }, 12000);
+
+        calibrationResolverRef.current = (response) => {
+          window.clearTimeout(timeout);
+          resolve(response);
+        };
+
+        controlPoint.writeValueWithResponse(new Uint8Array([START_OFFSET_COMPENSATION])).catch((writeError) => {
+          window.clearTimeout(timeout);
+          calibrationResolverRef.current = null;
+          reject(writeError);
+        });
+      });
+
+      setCalibrationState(result.success ? 'success' : 'error');
+      setCalibrationMessage(result.message);
+    } catch (calibrationError) {
+      setCalibrationState('error');
+      setCalibrationMessage(calibrationError?.message || 'Kalibrierung fehlgeschlagen');
     }
   }
 
@@ -208,6 +283,28 @@ export default function App() {
     });
   }
 
+  function handleControlPoint(event) {
+    const value = event.target.value;
+    if (value.byteLength < 3 || value.getUint8(0) !== CONTROL_POINT_RESPONSE) return;
+
+    const requestOpCode = value.getUint8(1);
+    if (requestOpCode !== START_OFFSET_COMPENSATION) return;
+
+    const responseValue = value.getUint8(2);
+    let message = controlPointResponseText(responseValue);
+
+    if (responseValue === RESPONSE_SUCCESS && value.byteLength >= 5) {
+      const offsetCompensation = value.getInt16(3, true);
+      message = `Offset ${offsetCompensation}`;
+    }
+
+    calibrationResolverRef.current?.({
+      success: responseValue === RESPONSE_SUCCESS,
+      message,
+    });
+    calibrationResolverRef.current = null;
+  }
+
   useEffect(() => {
     const timer = window.setInterval(() => {
       if (!lastPacketAt || Date.now() - lastPacketAt <= 4500) return;
@@ -254,6 +351,11 @@ export default function App() {
         characteristic.removeEventListener('characteristicvaluechanged', handleMeasurement);
         characteristic.stopNotifications?.().catch(() => {});
       }
+      const controlPoint = controlPointRef.current;
+      if (controlPoint) {
+        controlPoint.removeEventListener('characteristicvaluechanged', handleControlPoint);
+        controlPoint.stopNotifications?.().catch(() => {});
+      }
       deviceRef.current?.removeEventListener('gattserverdisconnected', handleDisconnected);
       deviceRef.current?.gatt?.disconnect();
     };
@@ -270,9 +372,19 @@ export default function App() {
           </div>
 
           {connected ? (
-            <div className="flex items-center gap-3 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-4 py-2 text-sm font-semibold text-emerald-200 shadow-pulseGreen">
-              <span className="h-2.5 w-2.5 rounded-full bg-emerald-300 shadow-[0_0_18px_rgba(110,231,183,0.9)]" />
-              <span className="max-w-[11rem] truncate">{deviceName || 'Verbunden'}</span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={calibratePedal}
+                disabled={calibrationState === 'running' || calibrationState === 'unsupported'}
+                className="rounded-full border border-cyan-300/25 bg-cyan-300/10 px-3 py-2 text-xs font-black uppercase tracking-[0.16em] text-cyan-100 transition hover:bg-cyan-300/20 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-900 disabled:text-slate-500"
+              >
+                {calibrationState === 'running' ? 'Kalibriert...' : 'Kalibrieren'}
+              </button>
+              <div className="flex items-center gap-3 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-4 py-2 text-sm font-semibold text-emerald-200 shadow-pulseGreen">
+                <span className="h-2.5 w-2.5 rounded-full bg-emerald-300 shadow-[0_0_18px_rgba(110,231,183,0.9)]" />
+                <span className="max-w-[8rem] truncate sm:max-w-[11rem]">{deviceName || 'Verbunden'}</span>
+              </div>
             </div>
           ) : (
             <button
@@ -309,7 +421,7 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="mt-10 grid grid-cols-2 gap-4">
+              <div className="mt-10 grid grid-cols-3 gap-3 sm:gap-4">
                 <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4">
                   <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Durchschnitt</p>
                   <p className="mt-2 text-3xl font-black text-white">{metrics.avgWatts}<span className="text-base text-slate-500"> W</span></p>
@@ -317,6 +429,23 @@ export default function App() {
                 <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4">
                   <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Pakete</p>
                   <p className="mt-2 text-3xl font-black text-white">{metrics.samples}</p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4">
+                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Offset</p>
+                  <p
+                    className={`mt-2 truncate text-sm font-black ${
+                      calibrationState === 'success'
+                        ? 'text-emerald-300'
+                        : calibrationState === 'error'
+                          ? 'text-rose-300'
+                          : calibrationState === 'running'
+                            ? 'text-cyan-300'
+                            : 'text-slate-300'
+                    }`}
+                    title={calibrationMessage}
+                  >
+                    {calibrationMessage}
+                  </p>
                 </div>
               </div>
 
