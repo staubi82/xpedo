@@ -153,6 +153,72 @@ function shortUuid(uuid) {
   return match ? `0x${match[1].toUpperCase()}` : uuid;
 }
 
+const sevenSegments = {
+  '0': ['a', 'b', 'c', 'd', 'e', 'f'],
+  '1': ['b', 'c'],
+  '2': ['a', 'b', 'g', 'e', 'd'],
+  '3': ['a', 'b', 'g', 'c', 'd'],
+  '4': ['f', 'g', 'b', 'c'],
+  '5': ['a', 'f', 'g', 'c', 'd'],
+  '6': ['a', 'f', 'g', 'e', 'c', 'd'],
+  '7': ['a', 'b', 'c'],
+  '8': ['a', 'b', 'c', 'd', 'e', 'f', 'g'],
+  '9': ['a', 'b', 'c', 'd', 'f', 'g'],
+  '-': ['g'],
+};
+
+function SevenDigit({ value, className = '' }) {
+  const active = new Set(sevenSegments[value] || []);
+  const segmentClass = (name) => (active.has(name) ? 'opacity-100' : 'opacity-[0.08]');
+
+  return (
+    <svg viewBox="0 0 64 112" className={`inline-block fill-current ${className}`} aria-hidden="true">
+      <polygon className={segmentClass('a')} points="13,4 51,4 58,11 51,18 13,18 6,11" />
+      <polygon className={segmentClass('b')} points="53,20 61,13 61,52 53,60 45,52 45,28" />
+      <polygon className={segmentClass('c')} points="53,64 61,56 61,95 53,103 45,95 45,72" />
+      <polygon className={segmentClass('d')} points="13,94 51,94 58,101 51,108 13,108 6,101" />
+      <polygon className={segmentClass('e')} points="11,64 19,72 19,95 11,103 3,95 3,56" />
+      <polygon className={segmentClass('f')} points="11,20 19,28 19,52 11,60 3,52 3,13" />
+      <polygon className={segmentClass('g')} points="13,49 51,49 58,56 51,63 13,63 6,56" />
+    </svg>
+  );
+}
+
+function SevenText({ value, className = '', digitClassName = '' }) {
+  return (
+    <span className={`inline-flex items-end justify-center gap-[0.05em] text-black ${className}`} aria-label={String(value)}>
+      {String(value)
+        .split('')
+        .map((char, index) => {
+          if (char === '.') {
+            return (
+              <span key={`${char}-${index}`} className="mb-[0.08em] block h-[0.16em] w-[0.16em] rounded-full bg-current" />
+            );
+          }
+          if (char === ':') {
+            return (
+              <span key={`${char}-${index}`} className="mb-[0.28em] flex h-[0.55em] w-[0.16em] flex-col justify-between">
+                <span className="h-[0.13em] w-[0.13em] rounded-full bg-current" />
+                <span className="h-[0.13em] w-[0.13em] rounded-full bg-current" />
+              </span>
+            );
+          }
+          if (char === '/') {
+            return (
+              <span key={`${char}-${index}`} className="px-[0.06em] font-mono text-[0.75em] font-black leading-none">
+                /
+              </span>
+            );
+          }
+          if (char === ' ') {
+            return <span key={`${char}-${index}`} className="w-[0.35em]" />;
+          }
+          return <SevenDigit key={`${char}-${index}`} value={char} className={digitClassName} />;
+        })}
+    </span>
+  );
+}
+
 export default function App() {
   const [metrics, setMetrics] = useState(initialMetrics);
   const [connectionState, setConnectionState] = useState('idle');
@@ -693,6 +759,14 @@ export default function App() {
                   <span className={`h-3 w-3 border border-black ${lcdDarkMode ? 'bg-[#c2c6b8]' : 'bg-black'}`} />
                 </span>
               </button>
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="flex w-full justify-between border-b border-black/40 px-2 py-3 text-left text-sm font-black"
+              >
+                <span>AKTUALISIEREN</span>
+                <span>R</span>
+              </button>
               <div className="px-2 py-3 text-xs font-bold leading-5">
                 <p>{connected ? deviceName || 'VERBUNDEN' : 'NICHT VERBUNDEN'}</p>
                 <p>{calibrationMessage}</p>
@@ -707,7 +781,7 @@ export default function App() {
             <div className="col-span-2 border-b border-black/70 p-1.5 sm:p-2">
               <div className="font-mono text-[clamp(0.68rem,2.8vw,0.9rem)] font-black">WATT</div>
               <div className="flex items-end justify-center gap-2 font-mono tracking-normal">
-                <span className="text-[clamp(3.2rem,16vw,5.5rem)] font-black leading-none">{Math.max(0, metrics.watts)}</span>
+                <SevenText value={Math.max(0, metrics.watts)} digitClassName="h-[clamp(3.2rem,16vw,5.5rem)] w-[clamp(1.85rem,9vw,3.1rem)]" />
                 <span className="pb-[0.32em] text-[clamp(0.9rem,3.8vw,1.45rem)] font-black">W</span>
               </div>
             </div>
@@ -715,26 +789,28 @@ export default function App() {
             <div className="border-r border-black/70 p-2 sm:p-3">
               <div className="font-mono text-[clamp(0.65rem,2.6vw,0.875rem)] font-black">KADENZ</div>
               <div className="flex h-[calc(100%-1rem)] items-end justify-center gap-1 font-mono">
-                <span className="text-[clamp(2.3rem,13vw,3.75rem)] font-black leading-none">{metrics.cadence}</span>
+                <SevenText value={metrics.cadence} digitClassName="h-[clamp(2.3rem,13vw,3.75rem)] w-[clamp(1.28rem,7vw,2.08rem)]" />
                 <span className="pb-1 text-[clamp(0.58rem,2.3vw,0.82rem)] font-black">RPM</span>
               </div>
             </div>
             <div className="p-2 sm:p-3">
               <div className="font-mono text-[clamp(0.65rem,2.6vw,0.875rem)] font-black">GESCHW.</div>
               <div className="flex h-[calc(100%-1rem)] items-end justify-center gap-1 font-mono">
-                <span className="text-[clamp(2.3rem,13vw,3.75rem)] font-black leading-none">{metrics.speedKmh === null ? '--' : metrics.speedKmh.toFixed(1)}</span>
+                <SevenText value={metrics.speedKmh === null ? '--' : metrics.speedKmh.toFixed(1)} digitClassName="h-[clamp(2.3rem,13vw,3.75rem)] w-[clamp(1.28rem,7vw,2.08rem)]" />
                 <span className="pb-1 text-[clamp(0.55rem,2.1vw,0.75rem)] font-black">KM/H</span>
               </div>
             </div>
 
             <div className="border-t border-r border-black/70 p-2 sm:p-3">
               <div className="font-mono text-[clamp(0.65rem,2.6vw,0.875rem)] font-black">ZEIT</div>
-              <div className="flex h-[calc(100%-1rem)] items-center justify-center font-mono text-[clamp(1.55rem,7vw,2.25rem)] font-black leading-none">{formatDuration(metrics.movingSeconds)}</div>
+              <div className="flex h-[calc(100%-1rem)] items-center justify-center">
+                <SevenText value={formatDuration(metrics.movingSeconds)} digitClassName="h-[clamp(1.55rem,7vw,2.25rem)] w-[clamp(0.86rem,3.9vw,1.25rem)]" />
+              </div>
             </div>
             <div className="border-t border-black/70 p-2 sm:p-3">
               <div className="font-mono text-[clamp(0.65rem,2.6vw,0.875rem)] font-black">DISTANZ</div>
               <div className="flex h-[calc(100%-1rem)] items-center justify-center gap-1 font-mono">
-                <span className="text-[clamp(1.9rem,9vw,2.8rem)] font-black leading-none">{metrics.distanceKm.toFixed(2)}</span>
+                <SevenText value={metrics.distanceKm.toFixed(2)} digitClassName="h-[clamp(1.9rem,9vw,2.8rem)] w-[clamp(1.05rem,5vw,1.55rem)]" />
                 <span className="pb-1 text-[clamp(0.55rem,2.1vw,0.75rem)] font-black">KM</span>
               </div>
             </div>
@@ -742,14 +818,14 @@ export default function App() {
             <div className="border-t border-r border-black/70 p-2 sm:p-3">
               <div className="font-mono text-[clamp(0.65rem,2.6vw,0.875rem)] font-black">Ø WATT</div>
               <div className="flex h-[calc(100%-1rem)] items-end justify-center gap-1 font-mono">
-                <span className="text-[clamp(2rem,10vw,3.2rem)] font-black leading-none">{metrics.avgWatts}</span>
+                <SevenText value={metrics.avgWatts} digitClassName="h-[clamp(2rem,10vw,3.2rem)] w-[clamp(1.1rem,5.5vw,1.78rem)]" />
                 <span className="pb-1 text-[clamp(0.58rem,2.3vw,0.82rem)] font-black">W</span>
               </div>
             </div>
             <div className="border-t border-black/70 p-2 sm:p-3">
               <div className="font-mono text-[clamp(0.65rem,2.6vw,0.875rem)] font-black">MAX WATT</div>
               <div className="flex h-[calc(100%-1rem)] items-end justify-center gap-1 font-mono">
-                <span className="text-[clamp(2rem,10vw,3.2rem)] font-black leading-none">{metrics.maxWatts}</span>
+                <SevenText value={metrics.maxWatts} digitClassName="h-[clamp(2rem,10vw,3.2rem)] w-[clamp(1.1rem,5.5vw,1.78rem)]" />
                 <span className="pb-1 text-[clamp(0.58rem,2.3vw,0.82rem)] font-black">W</span>
               </div>
             </div>
@@ -757,32 +833,37 @@ export default function App() {
             <div className="border-t border-r border-black/70 p-2 sm:p-3">
               <div className="font-mono text-[clamp(0.65rem,2.6vw,0.875rem)] font-black">Ø KM/H</div>
               <div className="flex h-[calc(100%-1rem)] items-end justify-center gap-1 font-mono">
-                <span className="text-[clamp(1.8rem,8.5vw,2.7rem)] font-black leading-none">
-                  {metrics.movingSeconds > 0 ? (metrics.distanceKm / (metrics.movingSeconds / 3600)).toFixed(1) : '--'}
-                </span>
+                <SevenText value={metrics.movingSeconds > 0 ? (metrics.distanceKm / (metrics.movingSeconds / 3600)).toFixed(1) : '--'} digitClassName="h-[clamp(1.8rem,8.5vw,2.7rem)] w-[clamp(1rem,4.8vw,1.5rem)]" />
                 <span className="pb-1 text-[clamp(0.55rem,2.1vw,0.75rem)] font-black">KM/H</span>
               </div>
             </div>
             <div className="border-t border-black/70 p-2 sm:p-3">
               <div className="font-mono text-[clamp(0.65rem,2.6vw,0.875rem)] font-black">MAX KM/H</div>
               <div className="flex h-[calc(100%-1rem)] items-end justify-center gap-1 font-mono">
-                <span className="text-[clamp(1.8rem,8.5vw,2.7rem)] font-black leading-none">{metrics.maxSpeedKmh ? metrics.maxSpeedKmh.toFixed(1) : '--'}</span>
+                <SevenText value={metrics.maxSpeedKmh ? metrics.maxSpeedKmh.toFixed(1) : '--'} digitClassName="h-[clamp(1.8rem,8.5vw,2.7rem)] w-[clamp(1rem,4.8vw,1.5rem)]" />
                 <span className="pb-1 text-[clamp(0.55rem,2.1vw,0.75rem)] font-black">KM/H</span>
               </div>
             </div>
 
             <div className="border-t border-r border-black/70 p-2 sm:p-3">
               <div className="font-mono text-[clamp(0.65rem,2.6vw,0.875rem)] font-black">KJ</div>
-              <div className="flex h-[calc(100%-1rem)] items-center justify-center font-mono text-[clamp(2rem,10vw,3.2rem)] font-black leading-none">{Math.round(metrics.energyKj)}</div>
+              <div className="flex h-[calc(100%-1rem)] items-center justify-center">
+                <SevenText value={Math.round(metrics.energyKj)} digitClassName="h-[clamp(2rem,10vw,3.2rem)] w-[clamp(1.1rem,5.5vw,1.78rem)]" />
+              </div>
             </div>
             <div className="border-t border-black/70 p-2 sm:p-3">
               <div className="font-mono text-[clamp(0.65rem,2.6vw,0.875rem)] font-black">BALANCE</div>
-              <div className="flex h-[calc(100%-1rem)] items-center justify-center font-mono text-[clamp(2rem,10vw,3.2rem)] font-black leading-none">
-                {metrics.balance === null
-                  ? '--'
-                  : metrics.balanceReference === 'right'
-                    ? `${Math.round(100 - metrics.balance)}/${Math.round(metrics.balance)}`
-                    : `${Math.round(metrics.balance)}/${Math.round(100 - metrics.balance)}`}
+              <div className="flex h-[calc(100%-1rem)] items-center justify-center">
+                <SevenText
+                  value={
+                    metrics.balance === null
+                      ? '--'
+                      : metrics.balanceReference === 'right'
+                        ? `${Math.round(100 - metrics.balance)}/${Math.round(metrics.balance)}`
+                        : `${Math.round(metrics.balance)}/${Math.round(100 - metrics.balance)}`
+                  }
+                  digitClassName="h-[clamp(2rem,10vw,3.2rem)] w-[clamp(1.1rem,5.5vw,1.78rem)]"
+                />
               </div>
             </div>
 
