@@ -37,6 +37,7 @@ export default function SettingsView({
         <section>
           <SectionHeader>VERBINDUNG</SectionHeader>
           <div className="space-y-2">
+            <IosBluetoothHint />
             <Row>
               <RowLeft
                 label={connected ? (deviceName || 'PEDAL') : 'PEDAL VERBINDEN'}
@@ -293,6 +294,31 @@ function CalibrationWizard({ connected, calibrationState, calibrationMessage, on
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ─── iOS Bluetooth Hint ───────────────────────────────────────────────────────
+function IosBluetoothHint() {
+  const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  if (!isIos || navigator.bluetooth) return null;
+
+  return (
+    <div className="rounded border border-amber-500/40 bg-amber-500/10 p-3 font-mono text-xs font-bold leading-5">
+      <p className="font-black text-amber-300">⚠ iOS erkannt — Safari & Chrome unterstützen kein Web Bluetooth</p>
+      <p className="mt-2 text-zinc-300">
+        Bitte <span className="font-black text-white">Bluefy</span> aus dem App Store installieren.
+        Bluefy ist ein Browser mit Web Bluetooth Unterstützung und funktioniert mit dieser App.
+      </p>
+      <a
+        href="https://apps.apple.com/app/bluefy-web-ble-browser/id1492822055"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mt-3 flex items-center justify-between rounded border border-amber-500/50 bg-amber-500/20 px-3 py-2 text-amber-200"
+      >
+        <span>Bluefy – Web BLE Browser</span>
+        <span>App Store →</span>
+      </a>
     </div>
   );
 }
