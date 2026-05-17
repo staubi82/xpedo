@@ -158,6 +158,7 @@ export default function App() {
   const [calibrationState, setCalibrationState] = useState('unknown');
   const [calibrationMessage, setCalibrationMessage] = useState('Noch nicht kalibriert');
   const [menuOpen, setMenuOpen] = useState(false);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [gpsState, setGpsState] = useState('off');
   const [gpsMessage, setGpsMessage] = useState('GPS aus');
   const [diagnostics, setDiagnostics] = useState({
@@ -558,298 +559,199 @@ export default function App() {
   }, []);
 
   return (
-    <main className="min-h-screen overflow-hidden bg-slate-950 text-slate-100 antialiased">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(34,211,238,0.16),transparent_34%),radial-gradient(circle_at_20%_78%,rgba(34,197,94,0.10),transparent_30%)]" />
-      <div className="relative mx-auto flex min-h-screen w-full max-w-5xl flex-col px-5 py-5 sm:px-8 sm:py-8">
-        <header className="flex items-center justify-between gap-4">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-cyan-300/70">Cycling Power</p>
-            <h1 className="mt-1 text-xl font-bold text-white sm:text-2xl">Xpedo Dashboard</h1>
-          </div>
-
-          <div className="relative flex items-center gap-2">
-            {connected && (
-              <div className="flex items-center gap-3 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-4 py-2 text-sm font-semibold text-emerald-200 shadow-pulseGreen">
-                <span className="h-2.5 w-2.5 rounded-full bg-emerald-300 shadow-[0_0_18px_rgba(110,231,183,0.9)]" />
-                <span className="max-w-[8rem] truncate sm:max-w-[11rem]">{deviceName || 'Verbunden'}</span>
-              </div>
-            )}
-            <button
-              type="button"
-              onClick={() => setMenuOpen((open) => !open)}
-              className="grid h-11 w-11 place-items-center rounded-full border border-white/10 bg-white/5 text-slate-100 shadow-glow transition hover:border-cyan-300/40 hover:bg-cyan-300/10"
-              aria-label="Menue"
-            >
-              <span className="space-y-1.5">
-                <span className="block h-0.5 w-5 rounded-full bg-current" />
-                <span className="block h-0.5 w-5 rounded-full bg-current" />
-                <span className="block h-0.5 w-5 rounded-full bg-current" />
-              </span>
-            </button>
-
-            {menuOpen && (
-              <div className="absolute right-0 top-14 z-20 w-72 overflow-hidden rounded-3xl border border-white/10 bg-slate-950/95 p-3 shadow-2xl shadow-cyan-950/40 backdrop-blur">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    connect(null);
-                  }}
-                  disabled={connectionState === 'scanning' || connectionState === 'reconnecting'}
-                  className="flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm font-bold text-slate-100 transition hover:bg-white/8 disabled:cursor-wait disabled:opacity-50"
-                >
-                  <span>{connected ? 'Pedal neu verbinden' : 'Pedale verbinden'}</span>
-                  <span className="text-cyan-300">{connectionState === 'scanning' ? '...' : 'BLE'}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    calibratePedal();
-                  }}
-                  disabled={!connected || calibrationState === 'running' || calibrationState === 'unsupported'}
-                  className="mt-1 flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm font-bold text-slate-100 transition hover:bg-white/8 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <span>{calibrationState === 'running' ? 'Kalibriert...' : 'Kalibrieren'}</span>
-                  <span className="text-cyan-300">0x2A66</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    if (gpsState === 'active' || gpsState === 'starting') {
-                      stopGps();
-                    } else {
-                      startGps();
-                    }
-                  }}
-                  className="mt-1 flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm font-bold text-slate-100 transition hover:bg-white/8"
-                >
-                  <span>{gpsState === 'active' || gpsState === 'starting' ? 'GPS stoppen' : 'GPS aktivieren'}</span>
-                  <span className={gpsState === 'active' ? 'text-emerald-300' : 'text-cyan-300'}>
-                    {gpsState === 'starting' ? '...' : gpsState === 'active' ? 'ON' : 'GPS'}
-                  </span>
-                </button>
-                <div className="mt-2 rounded-2xl border border-white/10 bg-slate-900/70 p-4">
-                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Status</p>
-                  <p className="mt-2 text-sm font-semibold text-slate-300">{connected ? deviceName || 'Verbunden' : 'Nicht verbunden'}</p>
-                  <p className="mt-1 text-xs text-slate-500">{calibrationMessage}</p>
-                  <p className="mt-1 text-xs text-slate-500">{gpsMessage}</p>
-                </div>
-              </div>
-            )}
-          </div>
-        </header>
-
-        <section
-          className={`grid flex-1 place-items-center transition duration-500 ${
-            reconnectVisible || stale ? 'opacity-35 blur-[1px]' : 'opacity-100'
-          }`}
-        >
-          <div className="grid w-full gap-5 lg:grid-cols-[1.25fr_0.75fr] lg:items-center">
-            <div className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-white/[0.035] p-6 shadow-2xl backdrop-blur sm:p-8">
-              <div className="absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-cyan-200/60 to-transparent" />
-              <div className="flex items-start justify-between gap-5">
-                <div>
-                  <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-400">Leistung</p>
-                  <div className="mt-3 flex items-end gap-3">
-                    <span className="font-display text-7xl font-black leading-none text-cyan-300 drop-shadow-[0_0_28px_rgba(34,211,238,0.42)] sm:text-8xl">
-                      {Math.max(0, metrics.watts)}
-                    </span>
-                    <span className="pb-3 text-2xl font-extrabold text-slate-400">W</span>
-                  </div>
-                </div>
-                <div className={`rounded-full bg-gradient-to-r ${zone.zoneColor} px-3 py-1 text-xs font-black uppercase tracking-[0.18em] text-slate-950`}>
-                  {zone.zone}
-                </div>
-              </div>
-
-              <div className="mt-10 grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
-                <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4">
-                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Speed</p>
-                  <p className="mt-2 text-3xl font-black text-white">
-                    {metrics.speedKmh === null ? '--' : metrics.speedKmh.toFixed(1)}
-                    <span className="text-base text-slate-500"> km/h</span>
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4">
-                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Bewegung</p>
-                  <p className="mt-2 text-2xl font-black text-white">{formatDuration(metrics.movingSeconds)}</p>
-                </div>
-                <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4">
-                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Durchschnitt</p>
-                  <p className="mt-2 text-3xl font-black text-white">{metrics.avgWatts}<span className="text-base text-slate-500"> W</span></p>
-                </div>
-                <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4">
-                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Pakete</p>
-                  <p className="mt-2 text-3xl font-black text-white">{metrics.samples}</p>
-                </div>
-                <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4">
-                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Offset</p>
-                  <p
-                    className={`mt-2 truncate text-sm font-black ${
-                      calibrationState === 'success'
-                        ? 'text-emerald-300'
-                        : calibrationState === 'error'
-                          ? 'text-rose-300'
-                          : calibrationState === 'running'
-                            ? 'text-cyan-300'
-                            : 'text-slate-300'
-                    }`}
-                    title={calibrationMessage}
-                  >
-                    {calibrationMessage}
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4">
-                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Balance</p>
-                  <p className="mt-2 text-xl font-black text-white">
-                    {metrics.balance === null
-                      ? '--'
-                      : metrics.balanceReference === 'right'
-                        ? `${Math.round(100 - metrics.balance)}/${Math.round(metrics.balance)}`
-                        : `${Math.round(metrics.balance)}/${Math.round(100 - metrics.balance)}`}
-                  </p>
-                  <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">L/R</p>
-                </div>
-                <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4">
-                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Distanz</p>
-                  <p className="mt-2 text-3xl font-black text-white">
-                    {metrics.distanceKm.toFixed(2)}
-                    <span className="text-base text-slate-500"> km</span>
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-4 rounded-2xl border border-white/10 bg-slate-900/50 px-4 py-3">
-                <div className="flex items-center justify-between gap-3 text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
-                  <span>Flags</span>
-                  <span className="font-mono text-cyan-300">{metrics.flagsHex}</span>
-                </div>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {[
-                    ['Balance', metrics.balance !== null],
-                    ['Kadenz', Boolean(crankRef.current)],
-                    ['Control', Boolean(controlPointRef.current)],
-                    ['Auto', autoConnectAvailable],
-                    ['GPS', gpsState === 'active'],
-                  ].map(([label, active]) => (
-                    <span
-                      key={label}
-                      className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${
-                        active ? 'bg-cyan-300/15 text-cyan-200' : 'bg-slate-800 text-slate-500'
-                      }`}
-                    >
-                      {label}
-                    </span>
-                  ))}
-                </div>
-              </div>
-
-              <div className="mt-4 rounded-2xl border border-white/10 bg-slate-900/50 px-4 py-3">
-                <div className="flex items-center justify-between gap-3 text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
-                  <span>Diagnose</span>
-                  <span>{diagnostics.byteLength ? `${diagnostics.byteLength} Bytes` : 'wartet'}</span>
-                </div>
-                <p className="mt-2 break-all font-mono text-[11px] leading-5 text-cyan-100/80">
-                  {diagnostics.rawHex || 'Noch kein Measurement-Paket empfangen'}
-                </p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {(diagnostics.fields.length ? diagnostics.fields : ['Keine optionalen Felder']).map((field) => (
-                    <span
-                      key={field}
-                      className="rounded-full bg-emerald-300/12 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-emerald-200"
-                    >
-                      {field}
-                    </span>
-                  ))}
-                </div>
-                <div className="mt-3 grid gap-2 text-xs text-slate-400 sm:grid-cols-2">
-                  <p>
-                    Feature: <span className="font-mono text-slate-200">{diagnostics.featureHex}</span>
-                  </p>
-                  <p>
-                    Sensor Location: <span className="font-mono text-slate-200">{diagnostics.sensorLocation}</span>
-                  </p>
-                </div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {diagnostics.characteristics.map((item) => (
-                    <span
-                      key={item.uuid}
-                      className="rounded-full bg-slate-800 px-2.5 py-1 font-mono text-[10px] font-bold text-slate-300"
-                      title={`${item.read ? 'read ' : ''}${item.notify ? 'notify ' : ''}${item.write ? 'write' : ''}`}
-                    >
-                      {item.uuid}
-                    </span>
-                  ))}
-                </div>
-              </div>
-
-              <div className="mt-5">
-                <div className="mb-2 flex items-center justify-between text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
-                  <span>Power Zone</span>
-                  <span>{zone.zone}</span>
-                </div>
-                <div className="h-3 overflow-hidden rounded-full bg-slate-800">
-                  <div
-                    className={`h-full rounded-full bg-gradient-to-r ${zone.zoneColor} shadow-[0_0_24px_rgba(34,211,238,0.34)] transition-all duration-500`}
-                    style={{ width: zone.width }}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-white/[0.035] p-6 text-center shadow-2xl backdrop-blur sm:p-8">
-              <p className="text-sm font-semibold uppercase tracking-[0.24em] text-slate-400">Kadenz</p>
-              <div className="mx-auto mt-7 grid aspect-square w-64 max-w-full place-items-center rounded-full p-3" style={{ background: cadenceRing }}>
-                <div className="grid h-full w-full place-items-center rounded-full border border-white/10 bg-slate-950 shadow-inner">
-                  <div>
-                    <p className="text-6xl font-black leading-none text-white">{metrics.cadence}</p>
-                    <p className="mt-2 text-sm font-black uppercase tracking-[0.26em] text-cyan-300">RPM</p>
-                  </div>
-                </div>
-              </div>
-              <div className="mt-7 flex justify-center gap-2">
-                {[70, 90, 110].map((mark) => (
-                  <div
-                    key={mark}
-                    className={`h-2 w-12 rounded-full transition ${
-                      metrics.cadence >= mark ? 'bg-cyan-300 shadow-[0_0_18px_rgba(34,211,238,0.7)]' : 'bg-slate-800'
-                    }`}
-                  />
-                ))}
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <footer className="flex min-h-10 items-center justify-between gap-4 text-xs font-medium text-slate-500">
-          <span>
-            {connected
-              ? 'Live Cycling Power Profile 0x1818 / 0x2A63'
-              : autoConnectAvailable
-                ? 'Automatische Wiederverbindung aktiv'
-                : 'HTTPS und WebBLE-Browser erforderlich'}
-          </span>
-          <span>{lastPacketAt ? `Letztes Paket ${Math.max(0, Math.round((Date.now() - lastPacketAt) / 1000))}s` : 'Noch keine Daten'}</span>
-        </footer>
-
-        {reconnectVisible && (
-          <div className="absolute inset-0 grid place-items-center bg-slate-950/52 px-6 backdrop-blur-sm">
-            <div className="w-full max-w-sm rounded-[2rem] border border-cyan-300/20 bg-slate-950/92 p-6 text-center shadow-glow">
-              <div className="mx-auto h-3 w-3 animate-ping rounded-full bg-cyan-300" />
-              <h2 className="mt-5 text-2xl font-black text-white">Verbindung getrennt</h2>
-              <p className="mt-2 text-sm leading-6 text-slate-400">{error || 'Das Pedal sendet keine Bluetooth-Daten mehr.'}</p>
+    <main className="min-h-screen bg-zinc-950 p-3 text-zinc-100 antialiased sm:p-6">
+      <div className="mx-auto flex min-h-[calc(100vh-1.5rem)] w-full max-w-[460px] flex-col overflow-hidden rounded-[2rem] border border-zinc-700 bg-zinc-900 shadow-2xl shadow-black">
+        <div className="relative border-b border-black bg-black px-4 py-3 font-mono text-sm font-bold text-zinc-100">
+          <div className="flex items-center justify-between">
+            <span>FAHRT</span>
+            <div className="flex items-center gap-3">
+              <span className={connected ? 'text-lime-300' : 'text-zinc-500'}>BLE</span>
+              <span className={gpsState === 'active' ? 'text-lime-300' : 'text-zinc-500'}>GPS</span>
               <button
                 type="button"
-                onClick={reconnect}
-                className="mt-6 w-full rounded-full bg-cyan-300 px-5 py-3 text-sm font-black uppercase tracking-[0.18em] text-slate-950 shadow-glow transition hover:bg-cyan-200"
+                onClick={() => setMenuOpen((open) => !open)}
+                className="grid h-8 w-8 place-items-center rounded border border-zinc-700 bg-zinc-900"
+                aria-label="Menue"
               >
-                Verbindung wiederherstellen
+                <span className="space-y-1">
+                  <span className="block h-0.5 w-4 bg-zinc-100" />
+                  <span className="block h-0.5 w-4 bg-zinc-100" />
+                  <span className="block h-0.5 w-4 bg-zinc-100" />
+                </span>
               </button>
             </div>
           </div>
-        )}
+
+          {menuOpen && (
+            <div className="absolute right-3 top-14 z-30 w-72 rounded border border-black bg-[#c2c6b8] p-2 font-mono text-black shadow-xl">
+              <button
+                type="button"
+                onClick={() => {
+                  setMenuOpen(false);
+                  connect(null);
+                }}
+                disabled={connectionState === 'scanning' || connectionState === 'reconnecting'}
+                className="flex w-full justify-between border-b border-black/40 px-2 py-3 text-left text-sm font-black disabled:opacity-50"
+              >
+                <span>{connected ? 'PEDAL NEU VERBINDEN' : 'PEDALE VERBINDEN'}</span>
+                <span>{connectionState === 'scanning' ? '...' : 'BLE'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMenuOpen(false);
+                  calibratePedal();
+                }}
+                disabled={!connected || calibrationState === 'running' || calibrationState === 'unsupported'}
+                className="flex w-full justify-between border-b border-black/40 px-2 py-3 text-left text-sm font-black disabled:opacity-50"
+              >
+                <span>{calibrationState === 'running' ? 'KALIBRIERT...' : 'KALIBRIEREN'}</span>
+                <span>0x2A66</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMenuOpen(false);
+                  if (gpsState === 'active' || gpsState === 'starting') stopGps();
+                  else startGps();
+                }}
+                className="flex w-full justify-between border-b border-black/40 px-2 py-3 text-left text-sm font-black"
+              >
+                <span>{gpsState === 'active' || gpsState === 'starting' ? 'GPS STOPPEN' : 'GPS AKTIVIEREN'}</span>
+                <span>{gpsState === 'active' ? 'ON' : gpsState === 'starting' ? '...' : 'OFF'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDiagnostics((visible) => !visible);
+                  setMenuOpen(false);
+                }}
+                className="flex w-full justify-between border-b border-black/40 px-2 py-3 text-left text-sm font-black"
+              >
+                <span>DIAGNOSE</span>
+                <span>{showDiagnostics ? 'ON' : 'OFF'}</span>
+              </button>
+              <div className="px-2 py-3 text-xs font-bold leading-5">
+                <p>{connected ? deviceName || 'VERBUNDEN' : 'NICHT VERBUNDEN'}</p>
+                <p>{calibrationMessage}</p>
+                <p>{gpsMessage}</p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <section className={`relative flex-1 bg-[#b9bdaf] text-black transition ${reconnectVisible || stale ? 'opacity-50' : ''}`}>
+          <div className="grid grid-cols-2 border-b border-black/70">
+            <div className="col-span-2 border-b border-black/70 p-4">
+              <div className="mb-1 font-mono text-sm font-black">WATT</div>
+              <div className="flex items-end justify-center gap-2 font-mono tracking-normal">
+                <span className="text-[7.8rem] font-black leading-none sm:text-[8.8rem]">{Math.max(0, metrics.watts)}</span>
+                <span className="pb-4 text-3xl font-black">W</span>
+              </div>
+            </div>
+
+            <div className="border-r border-black/70 p-3">
+              <div className="font-mono text-sm font-black">KADENZ</div>
+              <div className="mt-2 flex items-end justify-center gap-1 font-mono">
+                <span className="text-6xl font-black leading-none">{metrics.cadence}</span>
+                <span className="pb-1 text-sm font-black">RPM</span>
+              </div>
+            </div>
+            <div className="p-3">
+              <div className="font-mono text-sm font-black">GESCHW.</div>
+              <div className="mt-2 flex items-end justify-center gap-1 font-mono">
+                <span className="text-6xl font-black leading-none">{metrics.speedKmh === null ? '--' : metrics.speedKmh.toFixed(1)}</span>
+                <span className="pb-1 text-xs font-black">KM/H</span>
+              </div>
+            </div>
+
+            <div className="border-t border-r border-black/70 p-3">
+              <div className="font-mono text-sm font-black">ZEIT</div>
+              <div className="mt-3 text-center font-mono text-3xl font-black leading-none">{formatDuration(metrics.movingSeconds)}</div>
+            </div>
+            <div className="border-t border-black/70 p-3">
+              <div className="font-mono text-sm font-black">DISTANZ</div>
+              <div className="mt-3 flex items-end justify-center gap-1 font-mono">
+                <span className="text-4xl font-black leading-none">{metrics.distanceKm.toFixed(2)}</span>
+                <span className="pb-1 text-xs font-black">KM</span>
+              </div>
+            </div>
+
+            <div className="border-t border-r border-black/70 p-3">
+              <div className="font-mono text-sm font-black">Ø WATT</div>
+              <div className="mt-2 flex items-end justify-center gap-1 font-mono">
+                <span className="text-5xl font-black leading-none">{metrics.avgWatts}</span>
+                <span className="pb-1 text-sm font-black">W</span>
+              </div>
+            </div>
+            <div className="border-t border-black/70 p-3">
+              <div className="font-mono text-sm font-black">BALANCE</div>
+              <div className="mt-2 text-center font-mono text-5xl font-black leading-none">
+                {metrics.balance === null
+                  ? '--'
+                  : metrics.balanceReference === 'right'
+                    ? `${Math.round(100 - metrics.balance)}/${Math.round(metrics.balance)}`
+                    : `${Math.round(metrics.balance)}/${Math.round(100 - metrics.balance)}`}
+              </div>
+            </div>
+
+            <div className="col-span-2 border-t border-black/70 p-3">
+              <div className="mb-2 flex justify-between font-mono text-sm font-black">
+                <span>ZONE</span>
+                <span>{zone.zone.toUpperCase()}</span>
+              </div>
+              <div className="grid h-4 grid-cols-[repeat(16,minmax(0,1fr))] gap-px border border-black bg-black p-px">
+                {Array.from({ length: 16 }).map((_, index) => {
+                  const active = index < Math.max(1, Math.round((parseFloat(zone.width) / 100) * 16));
+                  return <span key={index} className={active ? 'bg-black' : 'bg-[#9da294]'} />;
+                })}
+              </div>
+            </div>
+          </div>
+
+          {showDiagnostics && (
+            <div className="border-b border-black/70 p-3 font-mono text-xs font-bold leading-5">
+              <div className="flex justify-between">
+                <span>FLAGS {metrics.flagsHex}</span>
+                <span>{diagnostics.byteLength ? `${diagnostics.byteLength} BYTES` : 'WARTET'}</span>
+              </div>
+              <p className="mt-2 break-all">{diagnostics.rawHex || 'NOCH KEIN MEASUREMENT'}</p>
+              <p className="mt-2">FELDER: {diagnostics.fields.length ? diagnostics.fields.join(', ') : 'KEINE OPTIONALEN FELDER'}</p>
+              <p>FEATURE: {diagnostics.featureHex}</p>
+              <p>SENSOR: {diagnostics.sensorLocation}</p>
+              <p>GATT: {diagnostics.characteristics.map((item) => item.uuid).join(' ') || 'UNBEKANNT'}</p>
+            </div>
+          )}
+
+          {reconnectVisible && (
+            <div className="absolute inset-0 grid place-items-center bg-[#b9bdaf]/80 p-5">
+              <div className="border-2 border-black bg-[#c2c6b8] p-5 text-center font-mono text-black">
+                <h2 className="text-xl font-black">VERBINDUNG GETRENNT</h2>
+                <p className="mt-2 text-sm font-bold">{error || 'KEINE DATEN VOM PEDAL'}</p>
+                <button type="button" onClick={reconnect} className="mt-4 border-2 border-black px-4 py-3 text-sm font-black">
+                  WIEDERHERSTELLEN
+                </button>
+              </div>
+            </div>
+          )}
+        </section>
+
+        <div className="grid grid-cols-3 border-t border-black bg-black px-4 py-3 font-mono text-xs font-black text-zinc-200">
+          <button type="button" onClick={() => setMenuOpen(true)} className="text-left">
+            OPTIONEN
+          </button>
+          <div className="text-center">● ○ ○</div>
+          <button
+            type="button"
+            onClick={() => {
+              if (gpsState === 'active' || gpsState === 'starting') stopGps();
+              else startGps();
+            }}
+            className="text-right"
+          >
+            GPS {gpsState === 'active' ? 'ON' : 'OFF'}
+          </button>
+        </div>
       </div>
     </main>
   );
