@@ -20,6 +20,9 @@ const ACCUMULATED_ENERGY_PRESENT = 1 << 11;
 const initialMetrics = {
   watts: 0,
   cadence: 0,
+  speedKmh: null,
+  distanceKm: 0,
+  movingSeconds: 0,
   balance: null,
   balanceReference: 'unknown',
   flagsHex: '0x0000',
@@ -101,6 +104,25 @@ function controlPointResponseText(value) {
   }
 }
 
+function formatDuration(totalSeconds) {
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return [hours, minutes, seconds].map((part) => String(part).padStart(2, '0')).join(':');
+}
+
+function distanceInKm(a, b) {
+  const radiusKm = 6371;
+  const toRad = (value) => (value * Math.PI) / 180;
+  const latDelta = toRad(b.latitude - a.latitude);
+  const lonDelta = toRad(b.longitude - a.longitude);
+  const lat1 = toRad(a.latitude);
+  const lat2 = toRad(b.latitude);
+  const haversine =
+    Math.sin(latDelta / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(lonDelta / 2) ** 2;
+  return 2 * radiusKm * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+}
+
 export default function App() {
   const [metrics, setMetrics] = useState(initialMetrics);
   const [connectionState, setConnectionState] = useState('idle');
@@ -111,6 +133,8 @@ export default function App() {
   const [calibrationState, setCalibrationState] = useState('unknown');
   const [calibrationMessage, setCalibrationMessage] = useState('Noch nicht kalibriert');
   const [menuOpen, setMenuOpen] = useState(false);
+  const [gpsState, setGpsState] = useState('off');
+  const [gpsMessage, setGpsMessage] = useState('GPS aus');
 
   const deviceRef = useRef(null);
   const characteristicRef = useRef(null);
@@ -120,6 +144,9 @@ export default function App() {
   const lastCadenceUpdateRef = useRef(0);
   const reconnectingRef = useRef(false);
   const reconnectTimerRef = useRef(null);
+  const gpsWatchRef = useRef(null);
+  const lastPositionRef = useRef(null);
+  const lastMovementAtRef = useRef(0);
 
   const connected = connectionState === 'connected';
   const reconnectVisible = connectionState === 'lost' || connectionState === 'error';
@@ -231,6 +258,73 @@ export default function App() {
     }
   }
 
+  function startGps() {
+    if (!navigator.geolocation) {
+      setGpsState('error');
+      setGpsMessage('GPS nicht verfuegbar');
+      return;
+    }
+
+    setGpsState('starting');
+    setGpsMessage('GPS wird aktiviert...');
+
+    gpsWatchRef.current = navigator.geolocation.watchPosition(
+      (position) => {
+        const { latitude, longitude, speed, accuracy } = position.coords;
+        const currentPosition = { latitude, longitude, timestamp: position.timestamp };
+        let speedKmh = typeof speed === 'number' && speed >= 0 ? speed * 3.6 : null;
+        let distanceDelta = 0;
+
+        if (lastPositionRef.current) {
+          const secondsDelta = (position.timestamp - lastPositionRef.current.timestamp) / 1000;
+          distanceDelta = distanceInKm(lastPositionRef.current, currentPosition);
+
+          if ((speedKmh === null || speedKmh < 1) && secondsDelta > 0 && distanceDelta < 0.5) {
+            speedKmh = (distanceDelta / (secondsDelta / 3600));
+          }
+
+          if (accuracy > 40 || distanceDelta > 0.5) {
+            distanceDelta = 0;
+          }
+        }
+
+        lastPositionRef.current = currentPosition;
+        setGpsState('active');
+        setGpsMessage(`GPS aktiv, Genauigkeit ${Math.round(accuracy)} m`);
+
+        setMetrics((current) => ({
+          ...current,
+          speedKmh,
+          distanceKm: current.distanceKm + distanceDelta,
+        }));
+
+        if ((speedKmh ?? 0) > 2) {
+          lastMovementAtRef.current = Date.now();
+        }
+      },
+      (gpsError) => {
+        setGpsState('error');
+        setGpsMessage(gpsError?.message || 'GPS konnte nicht gestartet werden');
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 1000,
+        timeout: 12000,
+      },
+    );
+  }
+
+  function stopGps() {
+    if (gpsWatchRef.current !== null) {
+      navigator.geolocation.clearWatch(gpsWatchRef.current);
+      gpsWatchRef.current = null;
+    }
+    lastPositionRef.current = null;
+    setGpsState('off');
+    setGpsMessage('GPS aus');
+    setMetrics((current) => ({ ...current, speedKmh: null }));
+  }
+
   async function reconnect() {
     if (!deviceRef.current || reconnectingRef.current) {
       await connect(null);
@@ -277,6 +371,10 @@ export default function App() {
     }
 
     setLastPacketAt(now);
+    if (parsed.watts > 0 || (nextCadence ?? metrics.cadence) > 0) {
+      lastMovementAtRef.current = now;
+    }
+
     setMetrics((current) => {
       const nextSamples = current.samples + 1;
       const nextAverage = Math.round((current.avgWatts * current.samples + parsed.watts) / nextSamples);
@@ -328,6 +426,15 @@ export default function App() {
   }, [lastPacketAt]);
 
   useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (Date.now() - lastMovementAtRef.current > 2500) return;
+      setMetrics((current) => ({ ...current, movingSeconds: current.movingSeconds + 1 }));
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
 
     async function connectKnownDevice() {
@@ -368,6 +475,9 @@ export default function App() {
       if (controlPoint) {
         controlPoint.removeEventListener('characteristicvaluechanged', handleControlPoint);
         controlPoint.stopNotifications?.().catch(() => {});
+      }
+      if (gpsWatchRef.current !== null) {
+        navigator.geolocation.clearWatch(gpsWatchRef.current);
       }
       deviceRef.current?.removeEventListener('gattserverdisconnected', handleDisconnected);
       deviceRef.current?.gatt?.disconnect();
@@ -430,10 +540,28 @@ export default function App() {
                   <span>{calibrationState === 'running' ? 'Kalibriert...' : 'Kalibrieren'}</span>
                   <span className="text-cyan-300">0x2A66</span>
                 </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    if (gpsState === 'active' || gpsState === 'starting') {
+                      stopGps();
+                    } else {
+                      startGps();
+                    }
+                  }}
+                  className="mt-1 flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm font-bold text-slate-100 transition hover:bg-white/8"
+                >
+                  <span>{gpsState === 'active' || gpsState === 'starting' ? 'GPS stoppen' : 'GPS aktivieren'}</span>
+                  <span className={gpsState === 'active' ? 'text-emerald-300' : 'text-cyan-300'}>
+                    {gpsState === 'starting' ? '...' : gpsState === 'active' ? 'ON' : 'GPS'}
+                  </span>
+                </button>
                 <div className="mt-2 rounded-2xl border border-white/10 bg-slate-900/70 p-4">
                   <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Status</p>
                   <p className="mt-2 text-sm font-semibold text-slate-300">{connected ? deviceName || 'Verbunden' : 'Nicht verbunden'}</p>
                   <p className="mt-1 text-xs text-slate-500">{calibrationMessage}</p>
+                  <p className="mt-1 text-xs text-slate-500">{gpsMessage}</p>
                 </div>
               </div>
             )}
@@ -464,6 +592,17 @@ export default function App() {
               </div>
 
               <div className="mt-10 grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
+                <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4">
+                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Speed</p>
+                  <p className="mt-2 text-3xl font-black text-white">
+                    {metrics.speedKmh === null ? '--' : metrics.speedKmh.toFixed(1)}
+                    <span className="text-base text-slate-500"> km/h</span>
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4">
+                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Bewegung</p>
+                  <p className="mt-2 text-2xl font-black text-white">{formatDuration(metrics.movingSeconds)}</p>
+                </div>
                 <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4">
                   <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Durchschnitt</p>
                   <p className="mt-2 text-3xl font-black text-white">{metrics.avgWatts}<span className="text-base text-slate-500"> W</span></p>
@@ -500,6 +639,13 @@ export default function App() {
                   </p>
                   <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">L/R</p>
                 </div>
+                <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4">
+                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Distanz</p>
+                  <p className="mt-2 text-3xl font-black text-white">
+                    {metrics.distanceKm.toFixed(2)}
+                    <span className="text-base text-slate-500"> km</span>
+                  </p>
+                </div>
               </div>
 
               <div className="mt-4 rounded-2xl border border-white/10 bg-slate-900/50 px-4 py-3">
@@ -513,6 +659,7 @@ export default function App() {
                     ['Kadenz', Boolean(crankRef.current)],
                     ['Control', Boolean(controlPointRef.current)],
                     ['Auto', autoConnectAvailable],
+                    ['GPS', gpsState === 'active'],
                   ].map(([label, active]) => (
                     <span
                       key={label}
