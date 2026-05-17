@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 const CYCLING_POWER_SERVICE = 0x1818;
 const CYCLING_POWER_MEASUREMENT = 0x2a63;
+const CYCLING_POWER_FEATURE = 0x2a65;
 const CYCLING_POWER_CONTROL_POINT = 0x2a66;
+const SENSOR_LOCATION = 0x2a5d;
 const START_OFFSET_COMPENSATION = 0x0c;
 const CONTROL_POINT_RESPONSE = 0x20;
 const RESPONSE_SUCCESS = 0x01;
@@ -35,6 +37,9 @@ const initialMetrics = {
 function readCyclingPowerMeasurement(value) {
   const flags = value.getUint16(0, true);
   const watts = value.getInt16(2, true);
+  const rawHex = Array.from(new Uint8Array(value.buffer, value.byteOffset, value.byteLength))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join(' ');
   let offset = 4;
   let crank = null;
   let balance = null;
@@ -63,7 +68,7 @@ function readCyclingPowerMeasurement(value) {
   if (flags & BOTTOM_DEAD_SPOT_ANGLE_PRESENT) offset += 2;
   if (flags & ACCUMULATED_ENERGY_PRESENT) offset += 2;
 
-  return { flags, watts, crank, balance, balanceReference };
+  return { flags, watts, crank, balance, balanceReference, rawHex, byteLength: value.byteLength };
 }
 
 function deltaWithRollover(current, previous, rollover) {
@@ -123,6 +128,26 @@ function distanceInKm(a, b) {
   return 2 * radiusKm * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
 }
 
+function describeMeasurementFlags(flags) {
+  return [
+    ['Pedal Balance', Boolean(flags & PEDAL_POWER_BALANCE_PRESENT)],
+    ['Torque', Boolean(flags & ACCUMULATED_TORQUE_PRESENT)],
+    ['Wheel Rev', Boolean(flags & WHEEL_REVOLUTION_DATA_PRESENT)],
+    ['Crank Rev', Boolean(flags & CRANK_REVOLUTION_DATA_PRESENT)],
+    ['Force', Boolean(flags & EXTREME_FORCE_MAGNITUDES_PRESENT)],
+    ['Torque Peaks', Boolean(flags & EXTREME_TORQUE_MAGNITUDES_PRESENT)],
+    ['Angles', Boolean(flags & EXTREME_ANGLES_PRESENT)],
+    ['TDC', Boolean(flags & TOP_DEAD_SPOT_ANGLE_PRESENT)],
+    ['BDC', Boolean(flags & BOTTOM_DEAD_SPOT_ANGLE_PRESENT)],
+    ['Energy', Boolean(flags & ACCUMULATED_ENERGY_PRESENT)],
+  ].filter(([, active]) => active);
+}
+
+function shortUuid(uuid) {
+  const match = uuid.match(/^0000([0-9a-f]{4})-0000-1000-8000-00805f9b34fb$/i);
+  return match ? `0x${match[1].toUpperCase()}` : uuid;
+}
+
 export default function App() {
   const [metrics, setMetrics] = useState(initialMetrics);
   const [connectionState, setConnectionState] = useState('idle');
@@ -135,6 +160,14 @@ export default function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [gpsState, setGpsState] = useState('off');
   const [gpsMessage, setGpsMessage] = useState('GPS aus');
+  const [diagnostics, setDiagnostics] = useState({
+    rawHex: '',
+    byteLength: 0,
+    fields: [],
+    characteristics: [],
+    featureHex: 'nicht gelesen',
+    sensorLocation: 'nicht gelesen',
+  });
 
   const deviceRef = useRef(null);
   const characteristicRef = useRef(null);
@@ -189,6 +222,19 @@ export default function App() {
       const server = await device.gatt.connect();
       const service = await server.getPrimaryService(CYCLING_POWER_SERVICE);
       const characteristic = await service.getCharacteristic(CYCLING_POWER_MEASUREMENT);
+      const characteristics = await service.getCharacteristics();
+
+      setDiagnostics((current) => ({
+        ...current,
+        characteristics: characteristics.map((item) => ({
+          uuid: shortUuid(item.uuid),
+          notify: item.properties.notify || item.properties.indicate,
+          read: item.properties.read,
+          write: item.properties.write || item.properties.writeWithoutResponse,
+        })),
+      }));
+
+      readOptionalDiagnostics(service);
 
       characteristicRef.current = characteristic;
       characteristic.addEventListener('characteristicvaluechanged', handleMeasurement);
@@ -255,6 +301,25 @@ export default function App() {
     } catch (calibrationError) {
       setCalibrationState('error');
       setCalibrationMessage(calibrationError?.message || 'Kalibrierung fehlgeschlagen');
+    }
+  }
+
+  async function readOptionalDiagnostics(service) {
+    try {
+      const feature = await service.getCharacteristic(CYCLING_POWER_FEATURE);
+      const value = await feature.readValue();
+      const featureValue = value.byteLength >= 4 ? `0x${value.getUint32(0, true).toString(16).padStart(8, '0')}` : 'zu kurz';
+      setDiagnostics((current) => ({ ...current, featureHex: featureValue }));
+    } catch {
+      setDiagnostics((current) => ({ ...current, featureHex: 'nicht verfuegbar' }));
+    }
+
+    try {
+      const sensorLocation = await service.getCharacteristic(SENSOR_LOCATION);
+      const value = await sensorLocation.readValue();
+      setDiagnostics((current) => ({ ...current, sensorLocation: String(value.getUint8(0)) }));
+    } catch {
+      setDiagnostics((current) => ({ ...current, sensorLocation: 'nicht verfuegbar' }));
     }
   }
 
@@ -355,6 +420,7 @@ export default function App() {
     const parsed = readCyclingPowerMeasurement(value);
     const now = Date.now();
     let nextCadence = null;
+    const fields = describeMeasurementFlags(parsed.flags);
 
     if (parsed.crank) {
       const previous = crankRef.current;
@@ -371,6 +437,12 @@ export default function App() {
     }
 
     setLastPacketAt(now);
+    setDiagnostics((current) => ({
+      ...current,
+      rawHex: parsed.rawHex,
+      byteLength: parsed.byteLength,
+      fields: fields.map(([label]) => label),
+    }));
     if (parsed.watts > 0 || (nextCadence ?? metrics.cadence) > 0) {
       lastMovementAtRef.current = now;
     }
@@ -668,6 +740,45 @@ export default function App() {
                       }`}
                     >
                       {label}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mt-4 rounded-2xl border border-white/10 bg-slate-900/50 px-4 py-3">
+                <div className="flex items-center justify-between gap-3 text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
+                  <span>Diagnose</span>
+                  <span>{diagnostics.byteLength ? `${diagnostics.byteLength} Bytes` : 'wartet'}</span>
+                </div>
+                <p className="mt-2 break-all font-mono text-[11px] leading-5 text-cyan-100/80">
+                  {diagnostics.rawHex || 'Noch kein Measurement-Paket empfangen'}
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {(diagnostics.fields.length ? diagnostics.fields : ['Keine optionalen Felder']).map((field) => (
+                    <span
+                      key={field}
+                      className="rounded-full bg-emerald-300/12 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-emerald-200"
+                    >
+                      {field}
+                    </span>
+                  ))}
+                </div>
+                <div className="mt-3 grid gap-2 text-xs text-slate-400 sm:grid-cols-2">
+                  <p>
+                    Feature: <span className="font-mono text-slate-200">{diagnostics.featureHex}</span>
+                  </p>
+                  <p>
+                    Sensor Location: <span className="font-mono text-slate-200">{diagnostics.sensorLocation}</span>
+                  </p>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {diagnostics.characteristics.map((item) => (
+                    <span
+                      key={item.uuid}
+                      className="rounded-full bg-slate-800 px-2.5 py-1 font-mono text-[10px] font-bold text-slate-300"
+                      title={`${item.read ? 'read ' : ''}${item.notify ? 'notify ' : ''}${item.write ? 'write' : ''}`}
+                    >
+                      {item.uuid}
                     </span>
                   ))}
                 </div>
