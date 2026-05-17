@@ -23,101 +23,104 @@ export default function RideView({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <section className={`relative flex min-h-0 flex-1 flex-col overflow-hidden bg-[#b9bdaf] text-black transition ${lcdDarkMode ? 'invert' : ''} ${reconnectVisible || stale ? 'opacity-50' : ''}`}>
-        <div className="grid flex-1 grid-cols-2 grid-rows-[1.4fr_1fr_1fr_1fr_1fr_1fr_auto] border-b border-black/70">
+      <section
+        style={{ filter: lcdDarkMode ? 'invert(1)' : 'none' }}
+        className={`relative flex min-h-0 flex-1 flex-col overflow-hidden bg-[#b9bdaf] text-black transition-[filter,opacity] ${reconnectVisible || stale ? 'opacity-50' : ''}`}
+      >
+        <div className="grid flex-1 grid-cols-2 grid-rows-[1.6fr_1.1fr_1fr_1fr_1fr_1fr_auto] border-b border-black/70">
 
           {/* WATT */}
-          <div className="col-span-2 border-b border-black/70 p-1.5 sm:p-2">
-            <div className="font-mono text-[clamp(0.68rem,2.8vw,0.9rem)] font-black">WATT</div>
-            <div className="flex items-end justify-center gap-2 font-mono tracking-normal">
-              <SevenText value={Math.max(0, metrics.watts)} digitClassName="h-[clamp(3.2rem,16vw,5.5rem)] w-[clamp(1.85rem,9vw,3.1rem)]" />
-              <span className="pb-[0.32em] text-[clamp(0.9rem,3.8vw,1.45rem)] font-black">W</span>
+          <div className="col-span-2 flex flex-col border-b border-black/70 p-1.5 sm:p-2">
+            <div className="font-mono text-[clamp(0.6rem,2.4vw,0.85rem)] font-black opacity-80">WATT</div>
+            <div className="flex flex-1 items-center justify-center gap-2 font-mono tracking-normal">
+              <SevenText value={Math.max(0, metrics.watts)} digitClassName="h-[clamp(4.2rem,22vw,7.5rem)] w-[clamp(2.4rem,12.5vw,4.2rem)]" />
+              <span className="text-[clamp(1.1rem,4.5vw,1.8rem)] font-black">W</span>
             </div>
           </div>
 
           {/* KADENZ */}
-          <div className="border-r border-black/70 p-2 sm:p-3">
-            <div className="font-mono text-[clamp(0.65rem,2.6vw,0.875rem)] font-black">KADENZ</div>
-            <div className="flex h-[calc(100%-1rem)] items-end justify-center gap-1 font-mono">
-              <SevenText value={metrics.cadence} digitClassName="h-[clamp(2.3rem,13vw,3.75rem)] w-[clamp(1.28rem,7vw,2.08rem)]" />
-              <span className="pb-1 text-[clamp(0.58rem,2.3vw,0.82rem)] font-black">RPM</span>
+          <div className="flex flex-col border-r border-black/70 p-2 sm:p-3">
+            <div className="font-mono text-[clamp(0.58rem,2.2vw,0.8rem)] font-black opacity-80">KADENZ</div>
+            <div className="flex flex-1 items-center justify-center gap-1 font-mono">
+              <SevenText value={metrics.cadence} digitClassName="h-[clamp(2.8rem,15vw,4.5rem)] w-[clamp(1.55rem,8.5vw,2.5rem)]" />
+              <span className="text-[clamp(0.65rem,2.5vw,0.9rem)] font-black">RPM</span>
             </div>
           </div>
 
           {/* GESCHW. */}
-          <div className="p-2 sm:p-3">
-            <div className="font-mono text-[clamp(0.65rem,2.6vw,0.875rem)] font-black">GESCHW.</div>
-            <div className="flex h-[calc(100%-1rem)] items-end justify-center gap-1 font-mono">
-              <SevenText value={metrics.speedKmh === null ? '--' : metrics.speedKmh.toFixed(1)} digitClassName="h-[clamp(2.3rem,13vw,3.75rem)] w-[clamp(1.28rem,7vw,2.08rem)]" />
-              <span className="pb-1 text-[clamp(0.55rem,2.1vw,0.75rem)] font-black">KM/H</span>
+          <div className="flex flex-col p-2 sm:p-3">
+            <div className="font-mono text-[clamp(0.58rem,2.2vw,0.8rem)] font-black opacity-80">GESCHW.</div>
+            <div className="flex flex-1 items-center justify-center gap-1 font-mono">
+              <SevenText value={metrics.speedKmh === null ? '--' : metrics.speedKmh.toFixed(1)} digitClassName="h-[clamp(2.8rem,15vw,4.5rem)] w-[clamp(1.55rem,8.5vw,2.5rem)]" />
+              <span className="text-[clamp(0.6rem,2.3vw,0.85rem)] font-black">KM/H</span>
             </div>
           </div>
 
           {/* ZEIT */}
-          <div className="border-t border-r border-black/70 p-2 sm:p-3">
-            <div className="font-mono text-[clamp(0.65rem,2.6vw,0.875rem)] font-black">ZEIT</div>
-            <div className="flex h-[calc(100%-1rem)] items-end justify-center font-mono">
-              <SevenText value={formatDuration(metrics.movingSeconds)} digitClassName="h-[clamp(1.55rem,7vw,2.25rem)] w-[clamp(0.86rem,3.9vw,1.25rem)]" />
+          <div className="flex flex-col border-t border-r border-black/70 p-2 sm:p-3">
+            <div className="font-mono text-[clamp(0.58rem,2.2vw,0.8rem)] font-black opacity-80">ZEIT</div>
+            <div className="flex flex-1 items-center justify-center font-mono">
+              <SevenText value={formatDuration(metrics.movingSeconds)} digitClassName="h-[clamp(1.8rem,9vw,2.8rem)] w-[clamp(1rem,5vw,1.55rem)]" />
             </div>
           </div>
 
           {/* DISTANZ */}
-          <div className="border-t border-black/70 p-2 sm:p-3">
-            <div className="font-mono text-[clamp(0.65rem,2.6vw,0.875rem)] font-black">DISTANZ</div>
-            <div className="flex h-[calc(100%-1rem)] items-end justify-center gap-1 font-mono">
-              <SevenText value={metrics.distanceKm.toFixed(2)} digitClassName="h-[clamp(1.9rem,9vw,2.8rem)] w-[clamp(1.05rem,5vw,1.55rem)]" />
-              <span className="pb-1 text-[clamp(0.55rem,2.1vw,0.75rem)] font-black">KM</span>
+          <div className="flex flex-col border-t border-black/70 p-2 sm:p-3">
+            <div className="font-mono text-[clamp(0.58rem,2.2vw,0.8rem)] font-black opacity-80">DISTANZ</div>
+            <div className="flex flex-1 items-center justify-center gap-1 font-mono">
+              <SevenText value={metrics.distanceKm.toFixed(2)} digitClassName="h-[clamp(2.2rem,11vw,3.2rem)] w-[clamp(1.2rem,6vw,1.8rem)]" />
+              <span className="text-[clamp(0.6rem,2.3vw,0.85rem)] font-black">KM</span>
             </div>
           </div>
 
           {/* Ø WATT */}
-          <div className="border-t border-r border-black/70 p-2 sm:p-3">
-            <div className="font-mono text-[clamp(0.65rem,2.6vw,0.875rem)] font-black">Ø WATT</div>
-            <div className="flex h-[calc(100%-1rem)] items-end justify-center gap-1 font-mono">
-              <SevenText value={metrics.avgWatts} digitClassName="h-[clamp(2rem,10vw,3.2rem)] w-[clamp(1.1rem,5.5vw,1.78rem)]" />
-              <span className="pb-1 text-[clamp(0.58rem,2.3vw,0.82rem)] font-black">W</span>
+          <div className="flex flex-col border-t border-r border-black/70 p-2 sm:p-3">
+            <div className="font-mono text-[clamp(0.58rem,2.2vw,0.8rem)] font-black opacity-80">Ø WATT</div>
+            <div className="flex flex-1 items-center justify-center gap-1 font-mono">
+              <SevenText value={metrics.avgWatts} digitClassName="h-[clamp(2.4rem,12vw,3.8rem)] w-[clamp(1.35rem,6.5vw,2.1rem)]" />
+              <span className="text-[clamp(0.65rem,2.5vw,0.9rem)] font-black">W</span>
             </div>
           </div>
 
           {/* MAX WATT */}
-          <div className="border-t border-black/70 p-2 sm:p-3">
-            <div className="font-mono text-[clamp(0.65rem,2.6vw,0.875rem)] font-black">MAX WATT</div>
-            <div className="flex h-[calc(100%-1rem)] items-end justify-center gap-1 font-mono">
-              <SevenText value={metrics.maxWatts} digitClassName="h-[clamp(2rem,10vw,3.2rem)] w-[clamp(1.1rem,5.5vw,1.78rem)]" />
-              <span className="pb-1 text-[clamp(0.58rem,2.3vw,0.82rem)] font-black">W</span>
+          <div className="flex flex-col border-t border-black/70 p-2 sm:p-3">
+            <div className="font-mono text-[clamp(0.58rem,2.2vw,0.8rem)] font-black opacity-80">MAX WATT</div>
+            <div className="flex flex-1 items-center justify-center gap-1 font-mono">
+              <SevenText value={metrics.maxWatts} digitClassName="h-[clamp(2.4rem,12vw,3.8rem)] w-[clamp(1.35rem,6.5vw,2.1rem)]" />
+              <span className="text-[clamp(0.65rem,2.5vw,0.9rem)] font-black">W</span>
             </div>
           </div>
 
           {/* Ø KM/H */}
-          <div className="border-t border-r border-black/70 p-2 sm:p-3">
-            <div className="font-mono text-[clamp(0.65rem,2.6vw,0.875rem)] font-black">Ø KM/H</div>
-            <div className="flex h-[calc(100%-1rem)] items-end justify-center gap-1 font-mono">
-              <SevenText value={avgSpeedKmh} digitClassName="h-[clamp(1.8rem,8.5vw,2.7rem)] w-[clamp(1rem,4.8vw,1.5rem)]" />
-              <span className="pb-1 text-[clamp(0.55rem,2.1vw,0.75rem)] font-black">KM/H</span>
+          <div className="flex flex-col border-t border-r border-black/70 p-2 sm:p-3">
+            <div className="font-mono text-[clamp(0.58rem,2.2vw,0.8rem)] font-black opacity-80">Ø KM/H</div>
+            <div className="flex flex-1 items-center justify-center gap-1 font-mono">
+              <SevenText value={avgSpeedKmh} digitClassName="h-[clamp(2.2rem,11vw,3.2rem)] w-[clamp(1.2rem,6vw,1.8rem)]" />
+              <span className="text-[clamp(0.6rem,2.3vw,0.85rem)] font-black">KM/H</span>
             </div>
           </div>
 
           {/* MAX KM/H */}
-          <div className="border-t border-black/70 p-2 sm:p-3">
-            <div className="font-mono text-[clamp(0.65rem,2.6vw,0.875rem)] font-black">MAX KM/H</div>
-            <div className="flex h-[calc(100%-1rem)] items-end justify-center gap-1 font-mono">
-              <SevenText value={metrics.maxSpeedKmh ? metrics.maxSpeedKmh.toFixed(1) : '--'} digitClassName="h-[clamp(1.8rem,8.5vw,2.7rem)] w-[clamp(1rem,4.8vw,1.5rem)]" />
-              <span className="pb-1 text-[clamp(0.55rem,2.1vw,0.75rem)] font-black">KM/H</span>
+          <div className="flex flex-col border-t border-black/70 p-2 sm:p-3">
+            <div className="font-mono text-[clamp(0.58rem,2.2vw,0.8rem)] font-black opacity-80">MAX KM/H</div>
+            <div className="flex flex-1 items-center justify-center gap-1 font-mono">
+              <SevenText value={metrics.maxSpeedKmh ? metrics.maxSpeedKmh.toFixed(1) : '--'} digitClassName="h-[clamp(2.2rem,11vw,3.2rem)] w-[clamp(1.2rem,6vw,1.8rem)]" />
+              <span className="text-[clamp(0.6rem,2.3vw,0.85rem)] font-black">KM/H</span>
             </div>
           </div>
 
           {/* KJ */}
-          <div className="border-t border-r border-black/70 p-2 sm:p-3">
-            <div className="font-mono text-[clamp(0.65rem,2.6vw,0.875rem)] font-black">KJ</div>
-            <div className="flex h-[calc(100%-1rem)] items-end justify-center font-mono">
-              <SevenText value={Math.round(metrics.energyKj)} digitClassName="h-[clamp(2rem,10vw,3.2rem)] w-[clamp(1.1rem,5.5vw,1.78rem)]" />
+          <div className="flex flex-col border-t border-r border-black/70 p-2 sm:p-3">
+            <div className="font-mono text-[clamp(0.58rem,2.2vw,0.8rem)] font-black opacity-80">KJ</div>
+            <div className="flex flex-1 items-center justify-center font-mono">
+              <SevenText value={Math.round(metrics.energyKj)} digitClassName="h-[clamp(2.4rem,12vw,3.8rem)] w-[clamp(1.35rem,6.5vw,2.1rem)]" />
             </div>
           </div>
 
           {/* BALANCE */}
-          <div className="border-t border-black/70 p-2 sm:p-3">
-            <div className="font-mono text-[clamp(0.65rem,2.6vw,0.875rem)] font-black">BALANCE</div>
-            <div className="flex h-[calc(100%-1rem)] items-end justify-center font-mono">
+          <div className="flex flex-col border-t border-black/70 p-2 sm:p-3">
+            <div className="font-mono text-[clamp(0.58rem,2.2vw,0.8rem)] font-black opacity-80">BALANCE</div>
+            <div className="flex flex-1 items-center justify-center font-mono">
               <SevenText
                 value={
                   metrics.balance === null
@@ -126,7 +129,7 @@ export default function RideView({
                       ? `${Math.round(100 - metrics.balance)}/${Math.round(metrics.balance)}`
                       : `${Math.round(metrics.balance)}/${Math.round(100 - metrics.balance)}`
                 }
-                digitClassName="h-[clamp(2rem,10vw,3.2rem)] w-[clamp(1.1rem,5.5vw,1.78rem)]"
+                digitClassName="h-[clamp(2.4rem,12vw,3.8rem)] w-[clamp(1.35rem,6.5vw,2.1rem)]"
               />
             </div>
           </div>
