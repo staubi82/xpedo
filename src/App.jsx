@@ -80,17 +80,17 @@ function deltaWithRollover(current, previous, rollover) {
   return current >= previous ? current - previous : current + rollover - previous;
 }
 
-function powerZone(watts) {
-  if (watts >= 850) {
+function powerZone(watts, ftp) {
+  if (watts >= ftp * 1.21) {
     return { zone: 'Sprint', zoneColor: 'from-rose-400 to-orange-300', width: '100%' };
   }
-  if (watts >= 420) {
+  if (watts >= ftp * 1.06) {
     return { zone: 'VO2 Max', zoneColor: 'from-fuchsia-400 to-rose-300', width: '82%' };
   }
-  if (watts >= 300) {
+  if (watts >= ftp * 0.91) {
     return { zone: 'Schwelle', zoneColor: 'from-amber-300 to-lime-300', width: '64%' };
   }
-  if (watts >= 180) {
+  if (watts >= ftp * 0.76) {
     return { zone: 'Tempo', zoneColor: 'from-cyan-300 to-blue-300', width: '45%' };
   }
   if (watts > 0) {
@@ -231,6 +231,8 @@ export default function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [lcdDarkMode, setLcdDarkMode] = useState(() => localStorage.getItem('xpedo-lcd-dark') === '1');
+  const [ftp, setFtp] = useState(() => parseInt(localStorage.getItem('xpedo-ftp') || '250', 10));
+  const ftpRef = useRef(ftp);
   const [gpsState, setGpsState] = useState('off');
   const [gpsMessage, setGpsMessage] = useState('GPS aus');
   const [gpsAccuracy, setGpsAccuracy] = useState(null);
@@ -261,7 +263,7 @@ export default function App() {
 
   const cadenceProgress = Math.min(100, Math.max(0, (metrics.cadence / 130) * 100));
   const cadenceRing = `conic-gradient(rgb(34 211 238) ${cadenceProgress * 3.6}deg, rgb(30 41 59) 0deg)`;
-  const zone = useMemo(() => powerZone(metrics.watts), [metrics.watts]);
+  const zone = useMemo(() => powerZone(metrics.watts, ftp), [metrics.watts, ftp]);
   const gpsBars =
     gpsState !== 'active' || gpsAccuracy === null
       ? 0
@@ -549,7 +551,7 @@ export default function App() {
     setMetrics((current) => {
       const nextSamples = current.samples + 1;
       const nextAverage = Math.round((current.avgWatts * current.samples + parsed.watts) / nextSamples);
-      const nextZone = powerZone(parsed.watts);
+      const nextZone = powerZone(parsed.watts, ftpRef.current);
 
       return {
         ...current,
@@ -643,6 +645,31 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('xpedo-lcd-dark', lcdDarkMode ? '1' : '0');
   }, [lcdDarkMode]);
+
+  useEffect(() => {
+    ftpRef.current = ftp;
+    localStorage.setItem('xpedo-ftp', String(ftp));
+  }, [ftp]);
+
+  useEffect(() => {
+    if (!('wakeLock' in navigator)) return;
+    let wakeLock = null;
+
+    async function acquire() {
+      try { wakeLock = await navigator.wakeLock.request('screen'); } catch {}
+    }
+
+    function onVisibilityChange() {
+      if (document.visibilityState === 'visible') acquire();
+    }
+
+    acquire();
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      wakeLock?.release().catch(() => {});
+    };
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -749,6 +776,22 @@ export default function App() {
                 <span>DIAGNOSE</span>
                 <span>{showDiagnostics ? 'ON' : 'OFF'}</span>
               </button>
+              <div className="flex w-full items-center justify-between border-b border-black/40 px-2 py-3 text-sm font-black">
+                <span>FTP</span>
+                <span className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setFtp((w) => Math.max(50, w - 5))}
+                    className="h-7 w-7 border border-black/60 text-base leading-none"
+                  >−</button>
+                  <span className="w-16 text-center">{ftp} W</span>
+                  <button
+                    type="button"
+                    onClick={() => setFtp((w) => Math.min(600, w + 5))}
+                    className="h-7 w-7 border border-black/60 text-base leading-none"
+                  >+</button>
+                </span>
+              </div>
               <button
                 type="button"
                 onClick={() => setLcdDarkMode((enabled) => !enabled)}
@@ -777,7 +820,7 @@ export default function App() {
         </div>
 
         <section className={`relative min-h-0 flex-1 overflow-hidden bg-[#b9bdaf] text-black transition ${lcdDarkMode ? 'invert' : ''} ${reconnectVisible || stale ? 'opacity-50' : ''}`}>
-          <div className="grid h-full grid-cols-2 grid-rows-[1.05fr_1fr_1fr_1fr_1fr_0.28fr] border-b border-black/70">
+          <div className="grid h-full grid-cols-2 grid-rows-[1.4fr_1fr_1fr_1fr_1fr_1fr_auto] border-b border-black/70">
             <div className="col-span-2 border-b border-black/70 p-1.5 sm:p-2">
               <div className="font-mono text-[clamp(0.68rem,2.8vw,0.9rem)] font-black">WATT</div>
               <div className="flex items-end justify-center gap-2 font-mono tracking-normal">
@@ -803,13 +846,13 @@ export default function App() {
 
             <div className="border-t border-r border-black/70 p-2 sm:p-3">
               <div className="font-mono text-[clamp(0.65rem,2.6vw,0.875rem)] font-black">ZEIT</div>
-              <div className="flex h-[calc(100%-1rem)] items-center justify-center">
+              <div className="flex h-[calc(100%-1rem)] items-end justify-center font-mono">
                 <SevenText value={formatDuration(metrics.movingSeconds)} digitClassName="h-[clamp(1.55rem,7vw,2.25rem)] w-[clamp(0.86rem,3.9vw,1.25rem)]" />
               </div>
             </div>
             <div className="border-t border-black/70 p-2 sm:p-3">
               <div className="font-mono text-[clamp(0.65rem,2.6vw,0.875rem)] font-black">DISTANZ</div>
-              <div className="flex h-[calc(100%-1rem)] items-center justify-center gap-1 font-mono">
+              <div className="flex h-[calc(100%-1rem)] items-end justify-center gap-1 font-mono">
                 <SevenText value={metrics.distanceKm.toFixed(2)} digitClassName="h-[clamp(1.9rem,9vw,2.8rem)] w-[clamp(1.05rem,5vw,1.55rem)]" />
                 <span className="pb-1 text-[clamp(0.55rem,2.1vw,0.75rem)] font-black">KM</span>
               </div>
@@ -847,13 +890,13 @@ export default function App() {
 
             <div className="border-t border-r border-black/70 p-2 sm:p-3">
               <div className="font-mono text-[clamp(0.65rem,2.6vw,0.875rem)] font-black">KJ</div>
-              <div className="flex h-[calc(100%-1rem)] items-center justify-center">
+              <div className="flex h-[calc(100%-1rem)] items-end justify-center font-mono">
                 <SevenText value={Math.round(metrics.energyKj)} digitClassName="h-[clamp(2rem,10vw,3.2rem)] w-[clamp(1.1rem,5.5vw,1.78rem)]" />
               </div>
             </div>
             <div className="border-t border-black/70 p-2 sm:p-3">
               <div className="font-mono text-[clamp(0.65rem,2.6vw,0.875rem)] font-black">BALANCE</div>
-              <div className="flex h-[calc(100%-1rem)] items-center justify-center">
+              <div className="flex h-[calc(100%-1rem)] items-end justify-center font-mono">
                 <SevenText
                   value={
                     metrics.balance === null
