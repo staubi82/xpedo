@@ -23,12 +23,15 @@ const initialMetrics = {
   watts: 0,
   cadence: 0,
   speedKmh: null,
+  maxSpeedKmh: 0,
   distanceKm: 0,
   movingSeconds: 0,
+  energyKj: 0,
   balance: null,
   balanceReference: 'unknown',
   flagsHex: '0x0000',
   avgWatts: 0,
+  maxWatts: 0,
   samples: 0,
   zone: 'Bereit',
   zoneColor: 'from-cyan-400 to-emerald-300',
@@ -116,6 +119,10 @@ function formatDuration(totalSeconds) {
   return [hours, minutes, seconds].map((part) => String(part).padStart(2, '0')).join(':');
 }
 
+function formatClock(date) {
+  return date.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+}
+
 function distanceInKm(a, b) {
   const radiusKm = 6371;
   const toRad = (value) => (value * Math.PI) / 180;
@@ -150,6 +157,7 @@ function shortUuid(uuid) {
 
 export default function App() {
   const [metrics, setMetrics] = useState(initialMetrics);
+  const [clock, setClock] = useState(new Date());
   const [connectionState, setConnectionState] = useState('idle');
   const [deviceName, setDeviceName] = useState('');
   const [error, setError] = useState('');
@@ -361,6 +369,7 @@ export default function App() {
         setMetrics((current) => ({
           ...current,
           speedKmh,
+          maxSpeedKmh: Math.max(current.maxSpeedKmh, speedKmh ?? 0),
           distanceKm: current.distanceKm + distanceDelta,
         }));
 
@@ -461,6 +470,7 @@ export default function App() {
         balanceReference: parsed.balance ? parsed.balanceReference : current.balanceReference,
         flagsHex: `0x${parsed.flags.toString(16).padStart(4, '0')}`,
         avgWatts: nextAverage,
+        maxWatts: Math.max(current.maxWatts, parsed.watts),
         samples: nextSamples,
         zone: nextZone.zone,
         zoneColor: nextZone.zoneColor,
@@ -502,9 +512,18 @@ export default function App() {
   useEffect(() => {
     const timer = window.setInterval(() => {
       if (Date.now() - lastMovementAtRef.current > 2500) return;
-      setMetrics((current) => ({ ...current, movingSeconds: current.movingSeconds + 1 }));
+      setMetrics((current) => ({
+        ...current,
+        movingSeconds: current.movingSeconds + 1,
+        energyKj: current.energyKj + Math.max(0, current.watts) / 1000,
+      }));
     }, 1000);
 
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setClock(new Date()), 1000);
     return () => window.clearInterval(timer);
   }, []);
 
@@ -563,7 +582,7 @@ export default function App() {
       <div className="mx-auto flex min-h-[calc(100vh-1.5rem)] w-full max-w-[460px] flex-col overflow-hidden rounded-[2rem] border border-zinc-700 bg-zinc-900 shadow-2xl shadow-black">
         <div className="relative border-b border-black bg-black px-4 py-3 font-mono text-sm font-bold text-zinc-100">
           <div className="flex items-center justify-between">
-            <span>FAHRT</span>
+            <span>{formatClock(clock)}</span>
             <div className="flex items-center gap-3">
               <span className={connected ? 'text-lime-300' : 'text-zinc-500'}>BLE</span>
               <span className={gpsState === 'active' ? 'text-lime-300' : 'text-zinc-500'}>GPS</span>
@@ -685,6 +704,35 @@ export default function App() {
               </div>
             </div>
             <div className="border-t border-black/70 p-3">
+              <div className="font-mono text-sm font-black">MAX WATT</div>
+              <div className="mt-2 flex items-end justify-center gap-1 font-mono">
+                <span className="text-5xl font-black leading-none">{metrics.maxWatts}</span>
+                <span className="pb-1 text-sm font-black">W</span>
+              </div>
+            </div>
+
+            <div className="border-t border-r border-black/70 p-3">
+              <div className="font-mono text-sm font-black">Ø KM/H</div>
+              <div className="mt-2 flex items-end justify-center gap-1 font-mono">
+                <span className="text-4xl font-black leading-none">
+                  {metrics.movingSeconds > 0 ? (metrics.distanceKm / (metrics.movingSeconds / 3600)).toFixed(1) : '--'}
+                </span>
+                <span className="pb-1 text-xs font-black">KM/H</span>
+              </div>
+            </div>
+            <div className="border-t border-black/70 p-3">
+              <div className="font-mono text-sm font-black">MAX KM/H</div>
+              <div className="mt-2 flex items-end justify-center gap-1 font-mono">
+                <span className="text-4xl font-black leading-none">{metrics.maxSpeedKmh ? metrics.maxSpeedKmh.toFixed(1) : '--'}</span>
+                <span className="pb-1 text-xs font-black">KM/H</span>
+              </div>
+            </div>
+
+            <div className="border-t border-r border-black/70 p-3">
+              <div className="font-mono text-sm font-black">KJ</div>
+              <div className="mt-2 text-center font-mono text-5xl font-black leading-none">{Math.round(metrics.energyKj)}</div>
+            </div>
+            <div className="border-t border-black/70 p-3">
               <div className="font-mono text-sm font-black">BALANCE</div>
               <div className="mt-2 text-center font-mono text-5xl font-black leading-none">
                 {metrics.balance === null
@@ -705,9 +753,9 @@ export default function App() {
                   const active = index < Math.max(1, Math.round((parseFloat(zone.width) / 100) * 16));
                   return <span key={index} className={active ? 'bg-black' : 'bg-[#9da294]'} />;
                 })}
+                </div>
               </div>
             </div>
-          </div>
 
           {showDiagnostics && (
             <div className="border-b border-black/70 p-3 font-mono text-xs font-bold leading-5">
