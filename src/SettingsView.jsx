@@ -230,71 +230,126 @@ function CalibrationWizard({ connected, calibrationState, calibrationMessage, on
     onCalibrate();
   }
 
+  const offsetMatch = calibrationMessage?.match(/Offset\s+(-?\d+)/);
+  const offsetValue = offsetMatch ? offsetMatch[1] : null;
+
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-zinc-950">
-      <SubPageHeader title="KALIBRIERUNG" onBack={onBack} />
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
+        <span className="font-mono text-sm font-black tracking-widest text-zinc-200">Kalibrierung</span>
+        <button onClick={onBack} className="flex h-8 w-8 items-center justify-center rounded-full border border-zinc-700 font-mono text-sm text-zinc-400">✕</button>
+      </div>
 
-      <div className="flex flex-1 flex-col items-center justify-start p-6 font-mono">
-        {/* Schritt-Indikator */}
-        <div className="mb-8 flex gap-3">
-          {[0, 1, 2].map((s) => (
-            <div
-              key={s}
-              className={`h-2 w-8 rounded-full transition-colors ${
-                s <= step ? 'bg-lime-400' : 'bg-zinc-700'
-              }`}
-            />
-          ))}
-        </div>
+      <div className="flex flex-1 flex-col px-6 pb-6 pt-5 font-mono">
 
-        {step === 0 && (
-          <div className="w-full max-w-sm space-y-5">
-            <h2 className="text-center text-sm font-black text-zinc-100">SCHRITT 1 — VORBEREITUNG</h2>
-            <div className="space-y-3 rounded border border-zinc-800 bg-zinc-900 p-4 text-xs font-bold leading-6 text-zinc-300">
-              <p className="flex gap-3"><span className="text-lime-400">1.</span> Steige vom Fahrrad ab — kein Körpergewicht auf den Pedalen.</p>
-              <p className="flex gap-3"><span className="text-lime-400">2.</span> Stelle das Fahrrad sicher ab (Ständer oder Anlehnen).</p>
-              <p className="flex gap-3"><span className="text-lime-400">3.</span> Halte die Kurbeln still — am besten waagerecht oder senkrecht.</p>
+        {/* Vorbereitung (step 0 & 1) */}
+        {step <= 1 && (
+          <>
+            <h2 className="mb-1 text-center text-sm font-black text-zinc-100">Vorbereitung</h2>
+            <div className="mb-5 space-y-1 text-center text-xs font-bold text-zinc-400">
+              <p>• Schuhe ausgeklickt — nichts berührt die Pedale.</p>
+              <p>• Fahrrad stabil halten, Bewegungen minimieren.</p>
             </div>
-            <button
-              onClick={start}
-              disabled={!connected}
-              className="w-full rounded border border-lime-400 py-3 text-sm font-black text-lime-300 disabled:border-zinc-700 disabled:text-zinc-600"
-            >
-              {connected ? 'KALIBRIERUNG STARTEN →' : 'PEDAL NICHT VERBUNDEN'}
-            </button>
-          </div>
+
+            {/* Fahrrad-Illustration */}
+            <div className="relative mx-auto mb-6 flex h-52 w-52 items-center justify-center rounded-full bg-zinc-800">
+              <CranksetSvg dimmed={step === 1} />
+              {step === 1 && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 rounded-full bg-zinc-900/75">
+                  <div className="h-9 w-9 animate-spin rounded-full border-4 border-zinc-700 border-t-amber-400" />
+                  <span className="text-xs font-black text-amber-300">Kalibriert...</span>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-auto">
+              <button
+                onClick={start}
+                disabled={!connected || step === 1}
+                className="w-full rounded-full border-2 border-zinc-500 py-4 text-sm font-black text-zinc-100 transition-opacity disabled:opacity-40"
+              >
+                {step === 1 ? 'Kalibriert...' : connected ? 'Kalibrieren' : 'Pedal nicht verbunden'}
+              </button>
+            </div>
+          </>
         )}
 
-        {step === 1 && (
-          <div className="w-full max-w-sm space-y-5 text-center">
-            <h2 className="text-sm font-black text-zinc-100">SCHRITT 2 — WIRD KALIBRIERT</h2>
-            <div className="flex justify-center py-4">
-              <div className="h-12 w-12 animate-spin rounded-full border-4 border-zinc-700 border-t-lime-400" />
-            </div>
-            <p className="text-xs font-bold text-zinc-400">Pedal bitte ruhig halten...<br />Warte auf Antwort vom Sensor.</p>
-          </div>
-        )}
-
+        {/* Ergebnis (step 2) */}
         {step === 2 && (
-          <div className="w-full max-w-sm space-y-5 text-center">
-            <h2 className="text-sm font-black text-zinc-100">SCHRITT 3 — ERGEBNIS</h2>
-            <div className={`flex justify-center text-4xl py-2 ${calibrationState === 'success' ? 'text-lime-400' : 'text-red-400'}`}>
-              {calibrationState === 'success' ? '✓' : '✕'}
+          <div className="flex flex-1 flex-col items-center justify-center gap-4">
+            <div className={`flex h-32 w-32 items-center justify-center rounded-full border-4 ${
+              calibrationState === 'success' ? 'border-zinc-400' : 'border-red-500'
+            }`}>
+              {calibrationState === 'success' ? (
+                <svg viewBox="0 0 48 48" className="h-16 w-16 stroke-zinc-300" fill="none" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="8,24 20,36 40,14" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 48 48" className="h-14 w-14 stroke-red-400" fill="none" strokeWidth="4" strokeLinecap="round">
+                  <line x1="12" y1="12" x2="36" y2="36" />
+                  <line x1="36" y1="12" x2="12" y2="36" />
+                </svg>
+              )}
             </div>
-            <p className={`text-sm font-black ${calibrationState === 'success' ? 'text-lime-300' : 'text-red-400'}`}>
-              {calibrationState === 'success' ? 'Erfolgreich kalibriert' : 'Kalibrierung fehlgeschlagen'}
+
+            <p className="text-center text-sm font-black text-zinc-100">
+              {calibrationState === 'success' ? 'Kalibrierung abgeschlossen.' : 'Kalibrierung fehlgeschlagen.'}
             </p>
-            <p className="text-xs font-bold text-zinc-500">{calibrationMessage}</p>
-            <button
-              onClick={onBack}
-              className="w-full rounded border border-zinc-700 py-3 text-sm font-black text-zinc-300"
-            >
-              FERTIG
-            </button>
+
+            {offsetValue !== null && (
+              <p className="text-sm text-zinc-400">
+                Ergebnis:{' '}
+                <span className="font-black text-lime-400">{offsetValue} Offset</span>
+              </p>
+            )}
+
+            <div className="mt-auto w-full">
+              <button
+                onClick={onBack}
+                className="w-full rounded-full border-2 border-zinc-500 py-4 text-sm font-black text-zinc-100"
+              >
+                Fertig
+              </button>
+            </div>
           </div>
         )}
       </div>
     </div>
+  );
+}
+
+function CranksetSvg({ dimmed }) {
+  const c = dimmed ? '#4b5563' : '#6b7280';
+  const bright = dimmed ? '#374151' : '#9ca3af';
+  return (
+    <svg viewBox="0 0 160 160" width="140" height="140" fill="none" xmlns="http://www.w3.org/2000/svg">
+      {/* Outer chain ring */}
+      <circle cx="80" cy="88" r="52" stroke={c} strokeWidth="5" />
+      {/* Inner ring */}
+      <circle cx="80" cy="88" r="34" stroke={c} strokeWidth="3" />
+      {/* Spider arms */}
+      {[90, 162, 234, 306, 18].map((deg) => {
+        const r = (deg * Math.PI) / 180;
+        return <line key={deg} x1="80" y1="88" x2={80 + Math.cos(r) * 32} y2={88 + Math.sin(r) * 32} stroke={c} strokeWidth="3" strokeLinecap="round" />;
+      })}
+      {/* Center bolt */}
+      <circle cx="80" cy="88" r="9" fill={c} />
+      <circle cx="80" cy="88" r="4" fill={dimmed ? '#1f2937' : '#374151'} />
+      {/* Crank arm up-left */}
+      <line x1="80" y1="88" x2="50" y2="32" stroke={bright} strokeWidth="9" strokeLinecap="round" />
+      {/* Pedal 1 */}
+      <rect x="24" y="23" width="52" height="14" rx="7" fill={c} />
+      {/* Crank arm down-right */}
+      <line x1="80" y1="88" x2="110" y2="144" stroke={c} strokeWidth="9" strokeLinecap="round" />
+      {/* Pedal 2 */}
+      <rect x="84" y="139" width="52" height="14" rx="7" fill={dimmed ? '#374151' : '#4b5563'} />
+      {/* Chain teeth */}
+      {Array.from({ length: 16 }).map((_, i) => {
+        const a = (i / 16) * Math.PI * 2 - 0.1;
+        return <circle key={i} cx={80 + Math.cos(a) * 54} cy={88 + Math.sin(a) * 54} r="2.5" fill={c} />;
+      })}
+    </svg>
   );
 }
 
