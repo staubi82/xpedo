@@ -105,8 +105,10 @@ function describeMeasurementFlags(flags) {
 export default function App() {
   const [tab, setTab] = useState('ride');
   const [metrics, setMetrics] = useState(initialMetrics);
-  const [connectionState, setConnectionState] = useState('idle');
-  const [deviceName, setDeviceName] = useState('');
+  const [connectionState, setConnectionState] = useState(() => 
+    localStorage.getItem('xpedo-auto-connect') === '1' ? 'lost' : 'idle'
+  );
+  const [deviceName, setDeviceName] = useState(() => localStorage.getItem('xpedo-device-name') || '');
   const [error, setError] = useState('');
   const [lastPacketAt, setLastPacketAt] = useState(null);
   const [lastCalibration, setLastCalibration] = useState(() => {
@@ -173,14 +175,28 @@ export default function App() {
       setConnectionState('error');
       return;
     }
-    setConnectionState(existingDevice ? 'reconnecting' : 'scanning');
+
+    let device = existingDevice;
+    if (!device && navigator.bluetooth?.getDevices) {
+      try {
+        const devices = await navigator.bluetooth.getDevices();
+        if (devices.length > 0) device = devices[0];
+      } catch (e) { console.warn('getDevices failed', e); }
+    }
+
+    setConnectionState(device ? 'reconnecting' : 'scanning');
+
     try {
-      const device = existingDevice || (await navigator.bluetooth.requestDevice({
-        acceptAllDevices: true,
-        optionalServices: [CYCLING_POWER_SERVICE],
-      }));
+      if (!device) {
+        device = await navigator.bluetooth.requestDevice({
+          acceptAllDevices: true,
+          optionalServices: [CYCLING_POWER_SERVICE],
+        });
+      }
       deviceRef.current = device;
-      setDeviceName(device.name || 'Cycling Power Pedal');
+      const name = device.name || 'Cycling Power Pedal';
+      setDeviceName(name);
+      localStorage.setItem('xpedo-device-name', name);
       localStorage.setItem('xpedo-auto-connect', '1');
       device.addEventListener('gattserverdisconnected', handleDisconnected);
 
@@ -472,11 +488,10 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
     async function autoConnect() {
-      if (!navigator.bluetooth?.getDevices || localStorage.getItem('xpedo-auto-connect') !== '1') return;
-      try {
-        const devices = await navigator.bluetooth.getDevices();
-        if (!cancelled && devices.length > 0) await connect(devices[0]);
-      } catch {}
+      if (localStorage.getItem('xpedo-auto-connect') !== '1') return;
+      // Kurze Verzögerung beim Start, damit alles initialisiert ist
+      await new Promise(r => setTimeout(r, 1000));
+      if (!cancelled) await connect().catch(() => {});
     }
     autoConnect();
     return () => { cancelled = true; };
@@ -544,6 +559,7 @@ export default function App() {
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {tab === 'ride' && (
             <RideView
+              deviceName={deviceName}
               metrics={metrics}
               zone={zone}
               lcdDarkMode={lcdDarkMode}

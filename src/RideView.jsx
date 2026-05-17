@@ -3,6 +3,7 @@ import { SevenText } from './SevenSegment';
 import { formatDuration } from './utils';
 
 export default function RideView({
+  deviceName,
   metrics, zone, lcdDarkMode, reconnectVisible, stale,
   showDiagnostics, diagnostics, error,
   onReconnect, onSaveRide, onResetMetrics,
@@ -169,7 +170,7 @@ export default function RideView({
           <div className="absolute inset-0 grid place-items-center bg-[#b9bdaf]/80 p-5">
             <div className="border-2 border-black bg-[#c2c6b8] p-5 text-center font-mono text-black">
               <h2 className="text-xl font-black">VERBINDUNG GETRENNT</h2>
-              <p className="mt-2 text-sm font-bold">{error || 'KEINE DATEN VOM PEDAL'}</p>
+              <p className="mt-2 text-sm font-bold">{error || (deviceName ? `PEDAL "${deviceName.toUpperCase()}" NICHT BEREIT` : 'KEINE DATEN VOM PEDAL')}</p>
               <button type="button" onClick={onReconnect} className="mt-4 border-2 border-black px-4 py-3 text-sm font-black">
                 WIEDERHERSTELLEN
               </button>
