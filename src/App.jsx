@@ -20,6 +20,9 @@ const ACCUMULATED_ENERGY_PRESENT = 1 << 11;
 const initialMetrics = {
   watts: 0,
   cadence: 0,
+  balance: null,
+  balanceReference: 'unknown',
+  flagsHex: '0x0000',
   avgWatts: 0,
   samples: 0,
   zone: 'Bereit',
@@ -31,8 +34,14 @@ function readCyclingPowerMeasurement(value) {
   const watts = value.getInt16(2, true);
   let offset = 4;
   let crank = null;
+  let balance = null;
+  let balanceReference = 'unknown';
 
-  if (flags & PEDAL_POWER_BALANCE_PRESENT) offset += 1;
+  if (flags & PEDAL_POWER_BALANCE_PRESENT && value.byteLength >= offset + 1) {
+    balance = value.getUint8(offset) / 2;
+    balanceReference = flags & (1 << 1) ? 'right' : 'left';
+    offset += 1;
+  }
   if (flags & ACCUMULATED_TORQUE_PRESENT) offset += 2;
   if (flags & WHEEL_REVOLUTION_DATA_PRESENT) offset += 6;
 
@@ -51,7 +60,7 @@ function readCyclingPowerMeasurement(value) {
   if (flags & BOTTOM_DEAD_SPOT_ANGLE_PRESENT) offset += 2;
   if (flags & ACCUMULATED_ENERGY_PRESENT) offset += 2;
 
-  return { flags, watts, crank };
+  return { flags, watts, crank, balance, balanceReference };
 }
 
 function deltaWithRollover(current, previous, rollover) {
@@ -101,6 +110,7 @@ export default function App() {
   const [autoConnectAvailable, setAutoConnectAvailable] = useState(false);
   const [calibrationState, setCalibrationState] = useState('unknown');
   const [calibrationMessage, setCalibrationMessage] = useState('Noch nicht kalibriert');
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const deviceRef = useRef(null);
   const characteristicRef = useRef(null);
@@ -275,6 +285,9 @@ export default function App() {
       return {
         watts: parsed.watts,
         cadence: nextCadence ?? current.cadence,
+        balance: parsed.balance ?? current.balance,
+        balanceReference: parsed.balance ? parsed.balanceReference : current.balanceReference,
+        flagsHex: `0x${parsed.flags.toString(16).padStart(4, '0')}`,
         avgWatts: nextAverage,
         samples: nextSamples,
         zone: nextZone.zone,
@@ -371,31 +384,60 @@ export default function App() {
             <h1 className="mt-1 text-xl font-bold text-white sm:text-2xl">Xpedo Dashboard</h1>
           </div>
 
-          {connected ? (
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={calibratePedal}
-                disabled={calibrationState === 'running' || calibrationState === 'unsupported'}
-                className="rounded-full border border-cyan-300/25 bg-cyan-300/10 px-3 py-2 text-xs font-black uppercase tracking-[0.16em] text-cyan-100 transition hover:bg-cyan-300/20 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-900 disabled:text-slate-500"
-              >
-                {calibrationState === 'running' ? 'Kalibriert...' : 'Kalibrieren'}
-              </button>
+          <div className="relative flex items-center gap-2">
+            {connected && (
               <div className="flex items-center gap-3 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-4 py-2 text-sm font-semibold text-emerald-200 shadow-pulseGreen">
                 <span className="h-2.5 w-2.5 rounded-full bg-emerald-300 shadow-[0_0_18px_rgba(110,231,183,0.9)]" />
                 <span className="max-w-[8rem] truncate sm:max-w-[11rem]">{deviceName || 'Verbunden'}</span>
               </div>
-            </div>
-          ) : (
+            )}
             <button
               type="button"
-              onClick={() => connect(null)}
-              disabled={connectionState === 'scanning' || connectionState === 'reconnecting'}
-              className="rounded-full border border-cyan-300/30 bg-cyan-300/10 px-4 py-2 text-sm font-bold text-cyan-100 shadow-glow transition hover:border-cyan-200 hover:bg-cyan-300/20 disabled:cursor-wait disabled:opacity-60"
+              onClick={() => setMenuOpen((open) => !open)}
+              className="grid h-11 w-11 place-items-center rounded-full border border-white/10 bg-white/5 text-slate-100 shadow-glow transition hover:border-cyan-300/40 hover:bg-cyan-300/10"
+              aria-label="Menue"
             >
-              {connectionState === 'scanning' ? 'Scanne...' : 'Pedale verbinden'}
+              <span className="space-y-1.5">
+                <span className="block h-0.5 w-5 rounded-full bg-current" />
+                <span className="block h-0.5 w-5 rounded-full bg-current" />
+                <span className="block h-0.5 w-5 rounded-full bg-current" />
+              </span>
             </button>
-          )}
+
+            {menuOpen && (
+              <div className="absolute right-0 top-14 z-20 w-72 overflow-hidden rounded-3xl border border-white/10 bg-slate-950/95 p-3 shadow-2xl shadow-cyan-950/40 backdrop-blur">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    connect(null);
+                  }}
+                  disabled={connectionState === 'scanning' || connectionState === 'reconnecting'}
+                  className="flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm font-bold text-slate-100 transition hover:bg-white/8 disabled:cursor-wait disabled:opacity-50"
+                >
+                  <span>{connected ? 'Pedal neu verbinden' : 'Pedale verbinden'}</span>
+                  <span className="text-cyan-300">{connectionState === 'scanning' ? '...' : 'BLE'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    calibratePedal();
+                  }}
+                  disabled={!connected || calibrationState === 'running' || calibrationState === 'unsupported'}
+                  className="mt-1 flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm font-bold text-slate-100 transition hover:bg-white/8 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <span>{calibrationState === 'running' ? 'Kalibriert...' : 'Kalibrieren'}</span>
+                  <span className="text-cyan-300">0x2A66</span>
+                </button>
+                <div className="mt-2 rounded-2xl border border-white/10 bg-slate-900/70 p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">Status</p>
+                  <p className="mt-2 text-sm font-semibold text-slate-300">{connected ? deviceName || 'Verbunden' : 'Nicht verbunden'}</p>
+                  <p className="mt-1 text-xs text-slate-500">{calibrationMessage}</p>
+                </div>
+              </div>
+            )}
+          </div>
         </header>
 
         <section
@@ -421,7 +463,7 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="mt-10 grid grid-cols-3 gap-3 sm:gap-4">
+              <div className="mt-10 grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
                 <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4">
                   <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Durchschnitt</p>
                   <p className="mt-2 text-3xl font-black text-white">{metrics.avgWatts}<span className="text-base text-slate-500"> W</span></p>
@@ -446,6 +488,41 @@ export default function App() {
                   >
                     {calibrationMessage}
                   </p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-slate-900/70 p-4">
+                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">Balance</p>
+                  <p className="mt-2 text-xl font-black text-white">
+                    {metrics.balance === null
+                      ? '--'
+                      : metrics.balanceReference === 'right'
+                        ? `${Math.round(100 - metrics.balance)}/${Math.round(metrics.balance)}`
+                        : `${Math.round(metrics.balance)}/${Math.round(100 - metrics.balance)}`}
+                  </p>
+                  <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">L/R</p>
+                </div>
+              </div>
+
+              <div className="mt-4 rounded-2xl border border-white/10 bg-slate-900/50 px-4 py-3">
+                <div className="flex items-center justify-between gap-3 text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
+                  <span>Flags</span>
+                  <span className="font-mono text-cyan-300">{metrics.flagsHex}</span>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {[
+                    ['Balance', metrics.balance !== null],
+                    ['Kadenz', Boolean(crankRef.current)],
+                    ['Control', Boolean(controlPointRef.current)],
+                    ['Auto', autoConnectAvailable],
+                  ].map(([label, active]) => (
+                    <span
+                      key={label}
+                      className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${
+                        active ? 'bg-cyan-300/15 text-cyan-200' : 'bg-slate-800 text-slate-500'
+                      }`}
+                    >
+                      {label}
+                    </span>
+                  ))}
                 </div>
               </div>
 
