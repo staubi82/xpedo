@@ -136,6 +136,8 @@ export default function App() {
   const lastPositionRef = useRef(null);
   const lastMovementAtRef = useRef(0);
   const ftpRef = useRef(ftp);
+  const trackRef = useRef([]);
+  const lastTrackPointRef = useRef(null);
 
   const connected = connectionState === 'connected';
   const reconnectVisible = connectionState === 'lost' || connectionState === 'error';
@@ -273,31 +275,42 @@ export default function App() {
       if (prev) {
         const revDelta = deltaWithRollover(parsed.crank.revolutions, prev.revolutions, 65536);
         const timeDelta = deltaWithRollover(parsed.crank.eventTime, prev.eventTime, 65536);
-        if (timeDelta > 0 && now - lastCadenceUpdateRef.current >= 900) {
-          nextCadence = Math.round((revDelta / (timeDelta / 1024)) * 60);
-          lastCadenceUpdateRef.current = now;
+        if (timeDelta > 0) {
+          if (now - lastCadenceUpdateRef.current >= 900) {
+            nextCadence = Math.round((revDelta / (timeDelta / 1024)) * 60);
+            lastCadenceUpdateRef.current = now;
+          }
+        } else if (now - lastCadenceUpdateRef.current > 2000) {
+          nextCadence = 0;
         }
+      } else {
+        lastCadenceUpdateRef.current = now;
       }
       crankRef.current = parsed.crank;
+    } else if (lastCadenceUpdateRef.current > 0 && now - lastCadenceUpdateRef.current > 2000) {
+      nextCadence = 0;
     }
 
     setLastPacketAt(now);
     setDiagnostics((c) => ({ ...c, rawHex: parsed.rawHex, byteLength: parsed.byteLength, fields: fields.map(([l]) => l) }));
     if (parsed.watts > 0 || (nextCadence ?? 0) > 0) lastMovementAtRef.current = now;
 
+    // Filter unrealistic power spikes (e.g. > 1200W) to prevent fantasy max values
+    const filteredWatts = parsed.watts > 1200 ? 0 : parsed.watts;
+
     setMetrics((current) => {
       const nextSamples = current.samples + 1;
-      const nextAvg = Math.round((current.avgWatts * current.samples + parsed.watts) / nextSamples);
-      const nextZone = powerZone(parsed.watts, ftpRef.current);
+      const nextAvg = Math.round((current.avgWatts * current.samples + filteredWatts) / nextSamples);
+      const nextZone = powerZone(filteredWatts, ftpRef.current);
       return {
         ...current,
-        watts: parsed.watts,
+        watts: filteredWatts,
         cadence: nextCadence ?? current.cadence,
         balance: parsed.balance ?? current.balance,
         balanceReference: parsed.balance ? parsed.balanceReference : current.balanceReference,
         flagsHex: `0x${parsed.flags.toString(16).padStart(4, '0')}`,
         avgWatts: nextAvg,
-        maxWatts: Math.max(current.maxWatts, parsed.watts),
+        maxWatts: Math.max(current.maxWatts, filteredWatts),
         samples: nextSamples,
         zone: nextZone.zone,
         zoneColor: nextZone.zoneColor,
@@ -343,6 +356,20 @@ export default function App() {
           if (distanceDelta < GPS_DRIFT_DISTANCE_KM) distanceDelta = 0;
         }
         lastPositionRef.current = cur;
+
+        // Track recording — only when accuracy is good and moved ≥ 5 m
+        if (accuracy <= 40) {
+          const lastTp = lastTrackPointRef.current;
+          const movedEnough = !lastTp || distanceInKm(lastTp, cur) >= 0.005;
+          if (movedEnough) {
+            trackRef.current.push([
+              parseFloat(latitude.toFixed(5)),
+              parseFloat(longitude.toFixed(5)),
+            ]);
+            lastTrackPointRef.current = cur;
+          }
+        }
+
         setGpsState('active');
         setGpsAccuracy(accuracy);
         setGpsMessage(`GPS aktiv, Genauigkeit ${Math.round(accuracy)} m`);
@@ -380,6 +407,7 @@ export default function App() {
       avgSpeedKmh: metrics.movingSeconds > 0 ? metrics.distanceKm / (metrics.movingSeconds / 3600) : 0,
       maxSpeedKmh: metrics.maxSpeedKmh,
       energyKj: Math.round(metrics.energyKj),
+      track: trackRef.current.length >= 2 ? trackRef.current.slice() : [],
     };
     setRides((prev) => {
       const next = [ride, ...prev];
@@ -402,6 +430,8 @@ export default function App() {
     crankRef.current = null;
     lastPositionRef.current = null;
     lastMovementAtRef.current = 0;
+    trackRef.current = [];
+    lastTrackPointRef.current = null;
   }
 
   // ─── Effects ──────────────────────────────────────────────────────────────

@@ -1,5 +1,7 @@
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { formatDuration } from './utils';
+
+const RideMap = lazy(() => import('./RideMap'));
 
 const FIELDS = [
   { key: 'durationSeconds', label: 'ZEIT',     fmt: (v) => formatDuration(v),           higherBetter: false },
@@ -34,6 +36,8 @@ export default function HistoryView({ rides, onDelete }) {
           : [prev[1], id],
     );
   }
+
+  const [mapOpen, setMapOpen] = useState(null);
 
   const compareRides = rides.filter((r) => selected.includes(r.id));
   const comparing = compareRides.length === 2;
@@ -125,6 +129,26 @@ export default function HistoryView({ rides, onDelete }) {
                   </div>
                 ))}
               </div>
+
+              {/* Strecken-Button + Karte */}
+              {ride.track?.length >= 2 && (
+                <div onClick={(e) => e.stopPropagation()}>
+                  <button
+                    type="button"
+                    onClick={() => setMapOpen(mapOpen === ride.id ? null : ride.id)}
+                    className="mt-3 w-full rounded border border-zinc-700 py-1.5 font-mono text-[10px] font-black text-zinc-500"
+                  >
+                    {mapOpen === ride.id ? '▲ STRECKE AUSBLENDEN' : `▼ STRECKE ANZEIGEN (${ride.track.length} Punkte)`}
+                  </button>
+                  {mapOpen === ride.id && (
+                    <div className="mt-2">
+                      <Suspense fallback={<div className="flex h-52 items-center justify-center font-mono text-xs text-zinc-600">KARTE LÄDT...</div>}>
+                        <RideMap track={ride.track} />
+                      </Suspense>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           );
         })}
