@@ -1,50 +1,46 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import RideView from './RideView';
+import HistoryView from './HistoryView';
+import SettingsView from './SettingsView';
+import { distanceInKm, powerZone } from './utils';
 
-const CYCLING_POWER_SERVICE = 0x1818;
-const CYCLING_POWER_MEASUREMENT = 0x2a63;
-const CYCLING_POWER_FEATURE = 0x2a65;
+// ─── BLE constants ────────────────────────────────────────────────────────────
+const CYCLING_POWER_SERVICE      = 0x1818;
+const CYCLING_POWER_MEASUREMENT  = 0x2a63;
+const CYCLING_POWER_FEATURE      = 0x2a65;
 const CYCLING_POWER_CONTROL_POINT = 0x2a66;
-const SENSOR_LOCATION = 0x2a5d;
-const START_OFFSET_COMPENSATION = 0x0c;
-const CONTROL_POINT_RESPONSE = 0x20;
-const RESPONSE_SUCCESS = 0x01;
-const GPS_STOP_SPEED_KMH = 5;
-const GPS_DRIFT_DISTANCE_KM = 0.015;
-const PEDAL_POWER_BALANCE_PRESENT = 1 << 0;
-const ACCUMULATED_TORQUE_PRESENT = 1 << 2;
-const WHEEL_REVOLUTION_DATA_PRESENT = 1 << 4;
-const CRANK_REVOLUTION_DATA_PRESENT = 1 << 5;
+const SENSOR_LOCATION            = 0x2a5d;
+const START_OFFSET_COMPENSATION  = 0x0c;
+const CONTROL_POINT_RESPONSE     = 0x20;
+const RESPONSE_SUCCESS           = 0x01;
+const GPS_STOP_SPEED_KMH         = 5;
+const GPS_DRIFT_DISTANCE_KM      = 0.015;
+const PEDAL_POWER_BALANCE_PRESENT      = 1 << 0;
+const ACCUMULATED_TORQUE_PRESENT       = 1 << 2;
+const WHEEL_REVOLUTION_DATA_PRESENT    = 1 << 4;
+const CRANK_REVOLUTION_DATA_PRESENT    = 1 << 5;
 const EXTREME_FORCE_MAGNITUDES_PRESENT = 1 << 6;
 const EXTREME_TORQUE_MAGNITUDES_PRESENT = 1 << 7;
-const EXTREME_ANGLES_PRESENT = 1 << 8;
-const TOP_DEAD_SPOT_ANGLE_PRESENT = 1 << 9;
-const BOTTOM_DEAD_SPOT_ANGLE_PRESENT = 1 << 10;
-const ACCUMULATED_ENERGY_PRESENT = 1 << 11;
+const EXTREME_ANGLES_PRESENT           = 1 << 8;
+const TOP_DEAD_SPOT_ANGLE_PRESENT      = 1 << 9;
+const BOTTOM_DEAD_SPOT_ANGLE_PRESENT   = 1 << 10;
+const ACCUMULATED_ENERGY_PRESENT       = 1 << 11;
 
+// ─── Initial state ────────────────────────────────────────────────────────────
 const initialMetrics = {
-  watts: 0,
-  cadence: 0,
-  speedKmh: null,
-  maxSpeedKmh: 0,
-  distanceKm: 0,
-  movingSeconds: 0,
-  energyKj: 0,
-  balance: null,
-  balanceReference: 'unknown',
-  flagsHex: '0x0000',
-  avgWatts: 0,
-  maxWatts: 0,
-  samples: 0,
-  zone: 'Bereit',
-  zoneColor: 'from-cyan-400 to-emerald-300',
+  watts: 0, cadence: 0, speedKmh: null, maxSpeedKmh: 0,
+  distanceKm: 0, movingSeconds: 0, energyKj: 0,
+  balance: null, balanceReference: 'unknown',
+  flagsHex: '0x0000', avgWatts: 0, maxWatts: 0, samples: 0,
+  zone: 'Bereit', zoneColor: 'from-cyan-400 to-emerald-300',
 };
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 function readCyclingPowerMeasurement(value) {
   const flags = value.getUint16(0, true);
   const watts = value.getInt16(2, true);
   const rawHex = Array.from(new Uint8Array(value.buffer, value.byteOffset, value.byteLength))
-    .map((byte) => byte.toString(16).padStart(2, '0'))
-    .join(' ');
+    .map((b) => b.toString(16).padStart(2, '0')).join(' ');
   let offset = 4;
   let crank = null;
   let balance = null;
@@ -57,15 +53,10 @@ function readCyclingPowerMeasurement(value) {
   }
   if (flags & ACCUMULATED_TORQUE_PRESENT) offset += 2;
   if (flags & WHEEL_REVOLUTION_DATA_PRESENT) offset += 6;
-
   if (flags & CRANK_REVOLUTION_DATA_PRESENT && value.byteLength >= offset + 4) {
-    crank = {
-      revolutions: value.getUint16(offset, true),
-      eventTime: value.getUint16(offset + 2, true), // 1/1024 second units
-    };
+    crank = { revolutions: value.getUint16(offset, true), eventTime: value.getUint16(offset + 2, true) };
     offset += 4;
   }
-
   if (flags & EXTREME_FORCE_MAGNITUDES_PRESENT) offset += 4;
   if (flags & EXTREME_TORQUE_MAGNITUDES_PRESENT) offset += 4;
   if (flags & EXTREME_ANGLES_PRESENT) offset += 3;
@@ -80,57 +71,19 @@ function deltaWithRollover(current, previous, rollover) {
   return current >= previous ? current - previous : current + rollover - previous;
 }
 
-function powerZone(watts, ftp) {
-  if (watts >= ftp * 1.21) {
-    return { zone: 'Sprint', zoneColor: 'from-rose-400 to-orange-300', width: '100%' };
-  }
-  if (watts >= ftp * 1.06) {
-    return { zone: 'VO2 Max', zoneColor: 'from-fuchsia-400 to-rose-300', width: '82%' };
-  }
-  if (watts >= ftp * 0.91) {
-    return { zone: 'Schwelle', zoneColor: 'from-amber-300 to-lime-300', width: '64%' };
-  }
-  if (watts >= ftp * 0.76) {
-    return { zone: 'Tempo', zoneColor: 'from-cyan-300 to-blue-300', width: '45%' };
-  }
-  if (watts > 0) {
-    return { zone: 'Ausdauer', zoneColor: 'from-emerald-400 to-cyan-300', width: '28%' };
-  }
-  return { zone: 'Bereit', zoneColor: 'from-slate-500 to-slate-300', width: '8%' };
-}
-
-function controlPointResponseText(value) {
-  switch (value) {
-    case RESPONSE_SUCCESS:
-      return 'Kalibrierung abgeschlossen';
-    case 0x02:
-      return 'Kalibrierung nicht unterstuetzt';
-    case 0x03:
-      return 'Ungueltige Kalibrierparameter';
-    case 0x04:
-      return 'Kalibrierung fehlgeschlagen';
-    default:
-      return `Unbekannte Antwort 0x${value.toString(16).padStart(2, '0')}`;
+function controlPointResponseText(v) {
+  switch (v) {
+    case RESPONSE_SUCCESS: return 'Kalibrierung abgeschlossen';
+    case 0x02: return 'Kalibrierung nicht unterstuetzt';
+    case 0x03: return 'Ungueltige Kalibrierparameter';
+    case 0x04: return 'Kalibrierung fehlgeschlagen';
+    default: return `Unbekannte Antwort 0x${v.toString(16).padStart(2, '0')}`;
   }
 }
 
-function formatDuration(totalSeconds) {
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-  return [hours, minutes, seconds].map((part) => String(part).padStart(2, '0')).join(':');
-}
-
-function distanceInKm(a, b) {
-  const radiusKm = 6371;
-  const toRad = (value) => (value * Math.PI) / 180;
-  const latDelta = toRad(b.latitude - a.latitude);
-  const lonDelta = toRad(b.longitude - a.longitude);
-  const lat1 = toRad(a.latitude);
-  const lat2 = toRad(b.latitude);
-  const haversine =
-    Math.sin(latDelta / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(lonDelta / 2) ** 2;
-  return 2 * radiusKm * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+function shortUuid(uuid) {
+  const m = uuid.match(/^0000([0-9a-f]{4})-0000-1000-8000-00805f9b34fb$/i);
+  return m ? `0x${m[1].toUpperCase()}` : uuid;
 }
 
 function describeMeasurementFlags(flags) {
@@ -148,101 +101,27 @@ function describeMeasurementFlags(flags) {
   ].filter(([, active]) => active);
 }
 
-function shortUuid(uuid) {
-  const match = uuid.match(/^0000([0-9a-f]{4})-0000-1000-8000-00805f9b34fb$/i);
-  return match ? `0x${match[1].toUpperCase()}` : uuid;
-}
-
-const sevenSegments = {
-  '0': ['a', 'b', 'c', 'd', 'e', 'f'],
-  '1': ['b', 'c'],
-  '2': ['a', 'b', 'g', 'e', 'd'],
-  '3': ['a', 'b', 'g', 'c', 'd'],
-  '4': ['f', 'g', 'b', 'c'],
-  '5': ['a', 'f', 'g', 'c', 'd'],
-  '6': ['a', 'f', 'g', 'e', 'c', 'd'],
-  '7': ['a', 'b', 'c'],
-  '8': ['a', 'b', 'c', 'd', 'e', 'f', 'g'],
-  '9': ['a', 'b', 'c', 'd', 'f', 'g'],
-  '-': ['g'],
-};
-
-function SevenDigit({ value, className = '' }) {
-  const active = new Set(sevenSegments[value] || []);
-  const segmentClass = (name) => (active.has(name) ? 'opacity-100' : 'opacity-[0.08]');
-
-  return (
-    <svg viewBox="0 0 64 112" className={`inline-block fill-current ${className}`} aria-hidden="true">
-      <polygon className={segmentClass('a')} points="13,4 51,4 58,11 51,18 13,18 6,11" />
-      <polygon className={segmentClass('b')} points="53,20 61,13 61,52 53,60 45,52 45,28" />
-      <polygon className={segmentClass('c')} points="53,64 61,56 61,95 53,103 45,95 45,72" />
-      <polygon className={segmentClass('d')} points="13,94 51,94 58,101 51,108 13,108 6,101" />
-      <polygon className={segmentClass('e')} points="11,64 19,72 19,95 11,103 3,95 3,56" />
-      <polygon className={segmentClass('f')} points="11,20 19,28 19,52 11,60 3,52 3,13" />
-      <polygon className={segmentClass('g')} points="13,49 51,49 58,56 51,63 13,63 6,56" />
-    </svg>
-  );
-}
-
-function SevenText({ value, className = '', digitClassName = '' }) {
-  return (
-    <span className={`inline-flex items-end justify-center gap-[0.05em] text-black ${className}`} aria-label={String(value)}>
-      {String(value)
-        .split('')
-        .map((char, index) => {
-          if (char === '.') {
-            return (
-              <span key={`${char}-${index}`} className="mb-[0.08em] block h-[0.16em] w-[0.16em] rounded-full bg-current" />
-            );
-          }
-          if (char === ':') {
-            return (
-              <span key={`${char}-${index}`} className="mb-[0.28em] flex h-[0.55em] w-[0.16em] flex-col justify-between">
-                <span className="h-[0.13em] w-[0.13em] rounded-full bg-current" />
-                <span className="h-[0.13em] w-[0.13em] rounded-full bg-current" />
-              </span>
-            );
-          }
-          if (char === '/') {
-            return (
-              <span key={`${char}-${index}`} className="px-[0.06em] font-mono text-[0.75em] font-black leading-none">
-                /
-              </span>
-            );
-          }
-          if (char === ' ') {
-            return <span key={`${char}-${index}`} className="w-[0.35em]" />;
-          }
-          return <SevenDigit key={`${char}-${index}`} value={char} className={digitClassName} />;
-        })}
-    </span>
-  );
-}
-
+// ─── App ──────────────────────────────────────────────────────────────────────
 export default function App() {
+  const [tab, setTab] = useState('ride');
   const [metrics, setMetrics] = useState(initialMetrics);
   const [connectionState, setConnectionState] = useState('idle');
   const [deviceName, setDeviceName] = useState('');
   const [error, setError] = useState('');
   const [lastPacketAt, setLastPacketAt] = useState(null);
-  const [autoConnectAvailable, setAutoConnectAvailable] = useState(false);
   const [calibrationState, setCalibrationState] = useState('unknown');
   const [calibrationMessage, setCalibrationMessage] = useState('Noch nicht kalibriert');
-  const [menuOpen, setMenuOpen] = useState(false);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [lcdDarkMode, setLcdDarkMode] = useState(() => localStorage.getItem('xpedo-lcd-dark') === '1');
   const [ftp, setFtp] = useState(() => parseInt(localStorage.getItem('xpedo-ftp') || '250', 10));
-  const ftpRef = useRef(ftp);
+  const [gpsAlwaysOn, setGpsAlwaysOn] = useState(() => localStorage.getItem('xpedo-gps-always') === '1');
   const [gpsState, setGpsState] = useState('off');
   const [gpsMessage, setGpsMessage] = useState('GPS aus');
   const [gpsAccuracy, setGpsAccuracy] = useState(null);
+  const [rides, setRides] = useState(() => JSON.parse(localStorage.getItem('xpedo-rides') || '[]'));
   const [diagnostics, setDiagnostics] = useState({
-    rawHex: '',
-    byteLength: 0,
-    fields: [],
-    characteristics: [],
-    featureHex: 'nicht gelesen',
-    sensorLocation: 'nicht gelesen',
+    rawHex: '', byteLength: 0, fields: [], characteristics: [],
+    featureHex: 'nicht gelesen', sensorLocation: 'nicht gelesen',
   });
 
   const deviceRef = useRef(null);
@@ -256,52 +135,39 @@ export default function App() {
   const gpsWatchRef = useRef(null);
   const lastPositionRef = useRef(null);
   const lastMovementAtRef = useRef(0);
+  const ftpRef = useRef(ftp);
 
   const connected = connectionState === 'connected';
   const reconnectVisible = connectionState === 'lost' || connectionState === 'error';
   const stale = connected && lastPacketAt && Date.now() - lastPacketAt > 3500;
-
-  const cadenceProgress = Math.min(100, Math.max(0, (metrics.cadence / 130) * 100));
-  const cadenceRing = `conic-gradient(rgb(34 211 238) ${cadenceProgress * 3.6}deg, rgb(30 41 59) 0deg)`;
   const zone = useMemo(() => powerZone(metrics.watts, ftp), [metrics.watts, ftp]);
-  const gpsBars =
-    gpsState !== 'active' || gpsAccuracy === null
-      ? 0
-      : gpsAccuracy <= 5
-        ? 4
-        : gpsAccuracy <= 10
-          ? 3
-          : gpsAccuracy <= 25
-            ? 2
-            : gpsAccuracy <= 50
-              ? 1
-              : 0;
 
+  const gpsBars =
+    gpsState !== 'active' || gpsAccuracy === null ? 0
+    : gpsAccuracy <= 5  ? 4
+    : gpsAccuracy <= 10 ? 3
+    : gpsAccuracy <= 25 ? 2
+    : gpsAccuracy <= 50 ? 1 : 0;
+
+  // ─── BLE ──────────────────────────────────────────────────────────────────
   async function connect(existingDevice = deviceRef.current) {
     setError('');
-
     if (!window.isSecureContext) {
       setError('Web Bluetooth braucht HTTPS oder localhost.');
       setConnectionState('error');
       return;
     }
-
     if (!navigator.bluetooth) {
-      setError('Dieser Browser stellt keine Web Bluetooth API bereit. Bitte Chrome, Chromium oder Edge verwenden.');
+      setError('Kein Web Bluetooth. Bitte Chrome, Chromium oder Edge verwenden.');
       setConnectionState('error');
       return;
     }
-
     setConnectionState(existingDevice ? 'reconnecting' : 'scanning');
-
     try {
-      const device =
-        existingDevice ||
-        (await navigator.bluetooth.requestDevice({
-          acceptAllDevices: true,
-          optionalServices: [CYCLING_POWER_SERVICE],
-        }));
-
+      const device = existingDevice || (await navigator.bluetooth.requestDevice({
+        acceptAllDevices: true,
+        optionalServices: [CYCLING_POWER_SERVICE],
+      }));
       deviceRef.current = device;
       setDeviceName(device.name || 'Cycling Power Pedal');
       localStorage.setItem('xpedo-auto-connect', '1');
@@ -312,8 +178,8 @@ export default function App() {
       const characteristic = await service.getCharacteristic(CYCLING_POWER_MEASUREMENT);
       const characteristics = await service.getCharacteristics();
 
-      setDiagnostics((current) => ({
-        ...current,
+      setDiagnostics((c) => ({
+        ...c,
         characteristics: characteristics.map((item) => ({
           uuid: shortUuid(item.uuid),
           notify: item.properties.notify || item.properties.indicate,
@@ -321,18 +187,16 @@ export default function App() {
           write: item.properties.write || item.properties.writeWithoutResponse,
         })),
       }));
-
       readOptionalDiagnostics(service);
-
       characteristicRef.current = characteristic;
       characteristic.addEventListener('characteristicvaluechanged', handleMeasurement);
       await characteristic.startNotifications();
 
       try {
-        const controlPoint = await service.getCharacteristic(CYCLING_POWER_CONTROL_POINT);
-        controlPointRef.current = controlPoint;
-        controlPoint.addEventListener('characteristicvaluechanged', handleControlPoint);
-        await controlPoint.startNotifications();
+        const cp = await service.getCharacteristic(CYCLING_POWER_CONTROL_POINT);
+        controlPointRef.current = cp;
+        cp.addEventListener('characteristicvaluechanged', handleControlPoint);
+        await cp.startNotifications();
         setCalibrationState('ready');
         setCalibrationMessage('Bereit fuer Nullstellen-Kalibrierung');
       } catch {
@@ -340,195 +204,75 @@ export default function App() {
         setCalibrationState('unsupported');
         setCalibrationMessage('Kalibrierung vom Pedal nicht freigegeben');
       }
-
       setConnectionState('connected');
       setLastPacketAt(Date.now());
-    } catch (connectError) {
-      const message =
-        connectError?.name === 'NotFoundError'
-          ? 'Kein Pedal ausgewählt.'
-          : connectError?.message || 'Bluetooth-Verbindung fehlgeschlagen.';
-      setError(message);
+    } catch (err) {
+      const msg = err?.name === 'NotFoundError' ? 'Kein Pedal ausgewählt.' : err?.message || 'Bluetooth-Verbindung fehlgeschlagen.';
+      setError(msg);
       setConnectionState(deviceRef.current ? 'lost' : 'error');
     }
   }
 
   async function calibratePedal() {
-    const controlPoint = controlPointRef.current;
-
-    if (!connected || !controlPoint) {
-      setCalibrationState('unsupported');
-      setCalibrationMessage('Control Point nicht verfuegbar');
-      return;
-    }
-
+    const cp = controlPointRef.current;
+    if (!connected || !cp) { setCalibrationState('unsupported'); setCalibrationMessage('Control Point nicht verfuegbar'); return; }
     setCalibrationState('running');
     setCalibrationMessage('Pedal ruhig halten...');
-
     try {
       const result = await new Promise((resolve, reject) => {
-        const timeout = window.setTimeout(() => {
-          calibrationResolverRef.current = null;
-          reject(new Error('Keine Antwort vom Pedal'));
-        }, 12000);
-
-        calibrationResolverRef.current = (response) => {
-          window.clearTimeout(timeout);
-          resolve(response);
-        };
-
-        controlPoint.writeValueWithResponse(new Uint8Array([START_OFFSET_COMPENSATION])).catch((writeError) => {
-          window.clearTimeout(timeout);
-          calibrationResolverRef.current = null;
-          reject(writeError);
+        const timeout = window.setTimeout(() => { calibrationResolverRef.current = null; reject(new Error('Keine Antwort vom Pedal')); }, 12000);
+        calibrationResolverRef.current = (response) => { window.clearTimeout(timeout); resolve(response); };
+        cp.writeValueWithResponse(new Uint8Array([START_OFFSET_COMPENSATION])).catch((e) => {
+          window.clearTimeout(timeout); calibrationResolverRef.current = null; reject(e);
         });
       });
-
       setCalibrationState(result.success ? 'success' : 'error');
       setCalibrationMessage(result.message);
-    } catch (calibrationError) {
+    } catch (e) {
       setCalibrationState('error');
-      setCalibrationMessage(calibrationError?.message || 'Kalibrierung fehlgeschlagen');
+      setCalibrationMessage(e?.message || 'Kalibrierung fehlgeschlagen');
     }
   }
 
   async function readOptionalDiagnostics(service) {
     try {
-      const feature = await service.getCharacteristic(CYCLING_POWER_FEATURE);
-      const value = await feature.readValue();
-      const featureValue = value.byteLength >= 4 ? `0x${value.getUint32(0, true).toString(16).padStart(8, '0')}` : 'zu kurz';
-      setDiagnostics((current) => ({ ...current, featureHex: featureValue }));
-    } catch {
-      setDiagnostics((current) => ({ ...current, featureHex: 'nicht verfuegbar' }));
-    }
-
+      const feat = await service.getCharacteristic(CYCLING_POWER_FEATURE);
+      const v = await feat.readValue();
+      const hex = v.byteLength >= 4 ? `0x${v.getUint32(0, true).toString(16).padStart(8, '0')}` : 'zu kurz';
+      setDiagnostics((c) => ({ ...c, featureHex: hex }));
+    } catch { setDiagnostics((c) => ({ ...c, featureHex: 'nicht verfuegbar' })); }
     try {
-      const sensorLocation = await service.getCharacteristic(SENSOR_LOCATION);
-      const value = await sensorLocation.readValue();
-      setDiagnostics((current) => ({ ...current, sensorLocation: String(value.getUint8(0)) }));
-    } catch {
-      setDiagnostics((current) => ({ ...current, sensorLocation: 'nicht verfuegbar' }));
-    }
-  }
-
-  function startGps() {
-    if (!navigator.geolocation) {
-      setGpsState('error');
-      setGpsMessage('GPS nicht verfuegbar');
-      setGpsAccuracy(null);
-      return;
-    }
-
-    setGpsState('starting');
-    setGpsMessage('GPS wird aktiviert...');
-    setGpsAccuracy(null);
-
-    gpsWatchRef.current = navigator.geolocation.watchPosition(
-      (position) => {
-        const { latitude, longitude, speed, accuracy } = position.coords;
-        const currentPosition = { latitude, longitude, timestamp: position.timestamp };
-        let speedKmh = typeof speed === 'number' && speed >= 0 ? speed * 3.6 : null;
-        let distanceDelta = 0;
-
-        if (lastPositionRef.current) {
-          const secondsDelta = (position.timestamp - lastPositionRef.current.timestamp) / 1000;
-          distanceDelta = distanceInKm(lastPositionRef.current, currentPosition);
-
-          if ((speedKmh === null || speedKmh < 1) && secondsDelta > 0 && distanceDelta < 0.5) {
-            speedKmh = (distanceDelta / (secondsDelta / 3600));
-          }
-
-          if (accuracy > 40 || distanceDelta > 0.5) {
-            distanceDelta = 0;
-          }
-        }
-
-        if ((speedKmh ?? 0) < GPS_STOP_SPEED_KMH) {
-          speedKmh = 0;
-          if (distanceDelta < GPS_DRIFT_DISTANCE_KM) {
-            distanceDelta = 0;
-          }
-        }
-
-        lastPositionRef.current = currentPosition;
-        setGpsState('active');
-        setGpsAccuracy(accuracy);
-        setGpsMessage(`GPS aktiv, Genauigkeit ${Math.round(accuracy)} m`);
-
-        setMetrics((current) => ({
-          ...current,
-          speedKmh,
-          maxSpeedKmh: Math.max(current.maxSpeedKmh, speedKmh ?? 0),
-          distanceKm: current.distanceKm + distanceDelta,
-        }));
-
-        if ((speedKmh ?? 0) > 2) {
-          lastMovementAtRef.current = Date.now();
-        }
-      },
-      (gpsError) => {
-        setGpsState('error');
-        setGpsAccuracy(null);
-        setGpsMessage(gpsError?.message || 'GPS konnte nicht gestartet werden');
-      },
-      {
-        enableHighAccuracy: true,
-        maximumAge: 1000,
-        timeout: 12000,
-      },
-    );
-  }
-
-  function stopGps() {
-    if (gpsWatchRef.current !== null) {
-      navigator.geolocation.clearWatch(gpsWatchRef.current);
-      gpsWatchRef.current = null;
-    }
-    lastPositionRef.current = null;
-    setGpsState('off');
-    setGpsAccuracy(null);
-    setGpsMessage('GPS aus');
-    setMetrics((current) => ({ ...current, speedKmh: null }));
-  }
-
-  async function reconnect() {
-    if (!deviceRef.current || reconnectingRef.current) {
-      await connect(null);
-      return;
-    }
-
-    reconnectingRef.current = true;
-    try {
-      await connect(deviceRef.current);
-    } finally {
-      reconnectingRef.current = false;
-    }
+      const sl = await service.getCharacteristic(SENSOR_LOCATION);
+      const v = await sl.readValue();
+      setDiagnostics((c) => ({ ...c, sensorLocation: String(v.getUint8(0)) }));
+    } catch { setDiagnostics((c) => ({ ...c, sensorLocation: 'nicht verfuegbar' })); }
   }
 
   function handleDisconnected() {
     setConnectionState('lost');
-
     if (localStorage.getItem('xpedo-auto-connect') === '1') {
       window.clearTimeout(reconnectTimerRef.current);
-      reconnectTimerRef.current = window.setTimeout(() => {
-        reconnect();
-      }, 1800);
+      reconnectTimerRef.current = window.setTimeout(() => reconnect(), 1800);
     }
   }
 
+  async function reconnect() {
+    if (!deviceRef.current || reconnectingRef.current) { await connect(null); return; }
+    reconnectingRef.current = true;
+    try { await connect(deviceRef.current); } finally { reconnectingRef.current = false; }
+  }
+
   function handleMeasurement(event) {
-    const value = event.target.value;
-    const parsed = readCyclingPowerMeasurement(value);
+    const parsed = readCyclingPowerMeasurement(event.target.value);
     const now = Date.now();
     let nextCadence = null;
     const fields = describeMeasurementFlags(parsed.flags);
 
     if (parsed.crank) {
-      const previous = crankRef.current;
-      if (previous) {
-        const revDelta = deltaWithRollover(parsed.crank.revolutions, previous.revolutions, 65536);
-        const timeDelta = deltaWithRollover(parsed.crank.eventTime, previous.eventTime, 65536);
-
+      const prev = crankRef.current;
+      if (prev) {
+        const revDelta = deltaWithRollover(parsed.crank.revolutions, prev.revolutions, 65536);
+        const timeDelta = deltaWithRollover(parsed.crank.eventTime, prev.eventTime, 65536);
         if (timeDelta > 0 && now - lastCadenceUpdateRef.current >= 900) {
           nextCadence = Math.round((revDelta / (timeDelta / 1024)) * 60);
           lastCadenceUpdateRef.current = now;
@@ -538,21 +282,13 @@ export default function App() {
     }
 
     setLastPacketAt(now);
-    setDiagnostics((current) => ({
-      ...current,
-      rawHex: parsed.rawHex,
-      byteLength: parsed.byteLength,
-      fields: fields.map(([label]) => label),
-    }));
-    if (parsed.watts > 0 || (nextCadence ?? metrics.cadence) > 0) {
-      lastMovementAtRef.current = now;
-    }
+    setDiagnostics((c) => ({ ...c, rawHex: parsed.rawHex, byteLength: parsed.byteLength, fields: fields.map(([l]) => l) }));
+    if (parsed.watts > 0 || (nextCadence ?? 0) > 0) lastMovementAtRef.current = now;
 
     setMetrics((current) => {
       const nextSamples = current.samples + 1;
-      const nextAverage = Math.round((current.avgWatts * current.samples + parsed.watts) / nextSamples);
+      const nextAvg = Math.round((current.avgWatts * current.samples + parsed.watts) / nextSamples);
       const nextZone = powerZone(parsed.watts, ftpRef.current);
-
       return {
         ...current,
         watts: parsed.watts,
@@ -560,7 +296,7 @@ export default function App() {
         balance: parsed.balance ?? current.balance,
         balanceReference: parsed.balance ? parsed.balanceReference : current.balanceReference,
         flagsHex: `0x${parsed.flags.toString(16).padStart(4, '0')}`,
-        avgWatts: nextAverage,
+        avgWatts: nextAvg,
         maxWatts: Math.max(current.maxWatts, parsed.watts),
         samples: nextSamples,
         zone: nextZone.zone,
@@ -572,401 +308,251 @@ export default function App() {
   function handleControlPoint(event) {
     const value = event.target.value;
     if (value.byteLength < 3 || value.getUint8(0) !== CONTROL_POINT_RESPONSE) return;
-
-    const requestOpCode = value.getUint8(1);
-    if (requestOpCode !== START_OFFSET_COMPENSATION) return;
-
+    if (value.getUint8(1) !== START_OFFSET_COMPENSATION) return;
     const responseValue = value.getUint8(2);
     let message = controlPointResponseText(responseValue);
-
     if (responseValue === RESPONSE_SUCCESS && value.byteLength >= 5) {
-      const offsetCompensation = value.getInt16(3, true);
-      message = `Offset ${offsetCompensation}`;
+      message = `Offset ${value.getInt16(3, true)}`;
     }
-
-    calibrationResolverRef.current?.({
-      success: responseValue === RESPONSE_SUCCESS,
-      message,
-    });
+    calibrationResolverRef.current?.({ success: responseValue === RESPONSE_SUCCESS, message });
     calibrationResolverRef.current = null;
   }
 
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      if (!lastPacketAt || Date.now() - lastPacketAt <= 4500) return;
-      setMetrics((current) => ({ ...current, cadence: 0, watts: 0 }));
-    }, 1000);
+  // ─── GPS ──────────────────────────────────────────────────────────────────
+  function startGps() {
+    if (!navigator.geolocation) { setGpsState('error'); setGpsMessage('GPS nicht verfuegbar'); return; }
+    setGpsState('starting');
+    setGpsMessage('GPS wird aktiviert...');
+    setGpsAccuracy(null);
+    gpsWatchRef.current = navigator.geolocation.watchPosition(
+      (position) => {
+        const { latitude, longitude, speed, accuracy } = position.coords;
+        const cur = { latitude, longitude, timestamp: position.timestamp };
+        let speedKmh = typeof speed === 'number' && speed >= 0 ? speed * 3.6 : null;
+        let distanceDelta = 0;
+        if (lastPositionRef.current) {
+          const secDelta = (position.timestamp - lastPositionRef.current.timestamp) / 1000;
+          distanceDelta = distanceInKm(lastPositionRef.current, cur);
+          if ((speedKmh === null || speedKmh < 1) && secDelta > 0 && distanceDelta < 0.5) {
+            speedKmh = distanceDelta / (secDelta / 3600);
+          }
+          if (accuracy > 40 || distanceDelta > 0.5) distanceDelta = 0;
+        }
+        if ((speedKmh ?? 0) < GPS_STOP_SPEED_KMH) {
+          speedKmh = 0;
+          if (distanceDelta < GPS_DRIFT_DISTANCE_KM) distanceDelta = 0;
+        }
+        lastPositionRef.current = cur;
+        setGpsState('active');
+        setGpsAccuracy(accuracy);
+        setGpsMessage(`GPS aktiv, Genauigkeit ${Math.round(accuracy)} m`);
+        setMetrics((c) => ({
+          ...c, speedKmh,
+          maxSpeedKmh: Math.max(c.maxSpeedKmh, speedKmh ?? 0),
+          distanceKm: c.distanceKm + distanceDelta,
+        }));
+        if ((speedKmh ?? 0) > 2) lastMovementAtRef.current = Date.now();
+      },
+      (err) => { setGpsState('error'); setGpsAccuracy(null); setGpsMessage(err?.message || 'GPS Fehler'); },
+      { enableHighAccuracy: true, maximumAge: 1000, timeout: 12000 },
+    );
+  }
 
-    return () => window.clearInterval(timer);
+  function stopGps() {
+    if (gpsWatchRef.current !== null) { navigator.geolocation.clearWatch(gpsWatchRef.current); gpsWatchRef.current = null; }
+    lastPositionRef.current = null;
+    setGpsState('off');
+    setGpsAccuracy(null);
+    setGpsMessage('GPS aus');
+    setMetrics((c) => ({ ...c, speedKmh: null }));
+  }
+
+  // ─── Ride management ──────────────────────────────────────────────────────
+  function saveRide() {
+    if (metrics.movingSeconds < 10) return;
+    const ride = {
+      id: Date.now(),
+      date: new Date().toISOString(),
+      durationSeconds: metrics.movingSeconds,
+      distanceKm: metrics.distanceKm,
+      avgWatts: metrics.avgWatts,
+      maxWatts: metrics.maxWatts,
+      avgSpeedKmh: metrics.movingSeconds > 0 ? metrics.distanceKm / (metrics.movingSeconds / 3600) : 0,
+      maxSpeedKmh: metrics.maxSpeedKmh,
+      energyKj: Math.round(metrics.energyKj),
+    };
+    setRides((prev) => {
+      const next = [ride, ...prev];
+      localStorage.setItem('xpedo-rides', JSON.stringify(next));
+      return next;
+    });
+  }
+
+  function deleteRide(id) {
+    setRides((prev) => {
+      const next = prev.filter((r) => r.id !== id);
+      localStorage.setItem('xpedo-rides', JSON.stringify(next));
+      return next;
+    });
+  }
+
+  function resetMetrics() {
+    setMetrics(initialMetrics);
+    setLastPacketAt(null);
+    crankRef.current = null;
+    lastPositionRef.current = null;
+    lastMovementAtRef.current = 0;
+  }
+
+  // ─── Effects ──────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const t = window.setInterval(() => {
+      if (!lastPacketAt || Date.now() - lastPacketAt <= 4500) return;
+      setMetrics((c) => ({ ...c, cadence: 0, watts: 0 }));
+    }, 1000);
+    return () => window.clearInterval(t);
   }, [lastPacketAt]);
 
   useEffect(() => {
-    const timer = window.setInterval(() => {
+    const t = window.setInterval(() => {
       if (Date.now() - lastMovementAtRef.current > 2500) return;
-      setMetrics((current) => ({
-        ...current,
-        movingSeconds: current.movingSeconds + 1,
-        energyKj: current.energyKj + Math.max(0, current.watts) / 1000,
+      setMetrics((c) => ({
+        ...c,
+        movingSeconds: c.movingSeconds + 1,
+        energyKj: c.energyKj + Math.max(0, c.watts) / 1000,
       }));
     }, 1000);
-
-    return () => window.clearInterval(timer);
+    return () => window.clearInterval(t);
   }, []);
 
   useEffect(() => {
     let cancelled = false;
-
-    async function connectKnownDevice() {
+    async function autoConnect() {
       if (!navigator.bluetooth?.getDevices || localStorage.getItem('xpedo-auto-connect') !== '1') return;
-
       try {
         const devices = await navigator.bluetooth.getDevices();
-        const knownPedal = devices.find((device) => {
-          const name = device.name?.toLowerCase() || '';
-          return name.includes('xpedo') || name.includes('omni') || name.includes('power');
-        });
-
-        if (!cancelled && knownPedal) {
-          setAutoConnectAvailable(true);
-          await connect(knownPedal);
-        }
-      } catch {
-        setAutoConnectAvailable(false);
-      }
+        if (!cancelled && devices.length > 0) await connect(devices[0]);
+      } catch {}
     }
-
-    connectKnownDevice();
-
-    return () => {
-      cancelled = true;
-    };
+    autoConnect();
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('xpedo-lcd-dark', lcdDarkMode ? '1' : '0');
-  }, [lcdDarkMode]);
+    if (gpsAlwaysOn && gpsState === 'off') startGps();
+    if (!gpsAlwaysOn && (gpsState === 'active' || gpsState === 'starting')) stopGps();
+  }, [gpsAlwaysOn]);
 
-  useEffect(() => {
-    ftpRef.current = ftp;
-    localStorage.setItem('xpedo-ftp', String(ftp));
-  }, [ftp]);
+  useEffect(() => { ftpRef.current = ftp; localStorage.setItem('xpedo-ftp', String(ftp)); }, [ftp]);
+  useEffect(() => { localStorage.setItem('xpedo-lcd-dark', lcdDarkMode ? '1' : '0'); }, [lcdDarkMode]);
+  useEffect(() => { localStorage.setItem('xpedo-gps-always', gpsAlwaysOn ? '1' : '0'); }, [gpsAlwaysOn]);
 
   useEffect(() => {
     if (!('wakeLock' in navigator)) return;
     let wakeLock = null;
-
-    async function acquire() {
-      try { wakeLock = await navigator.wakeLock.request('screen'); } catch {}
-    }
-
-    function onVisibilityChange() {
-      if (document.visibilityState === 'visible') acquire();
-    }
-
+    async function acquire() { try { wakeLock = await navigator.wakeLock.request('screen'); } catch {} }
+    function onVisibility() { if (document.visibilityState === 'visible') acquire(); }
     acquire();
-    document.addEventListener('visibilitychange', onVisibilityChange);
-    return () => {
-      document.removeEventListener('visibilitychange', onVisibilityChange);
-      wakeLock?.release().catch(() => {});
-    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => { document.removeEventListener('visibilitychange', onVisibility); wakeLock?.release().catch(() => {}); };
   }, []);
 
   useEffect(() => {
     return () => {
       window.clearTimeout(reconnectTimerRef.current);
-      const characteristic = characteristicRef.current;
-      if (characteristic) {
-        characteristic.removeEventListener('characteristicvaluechanged', handleMeasurement);
-        characteristic.stopNotifications?.().catch(() => {});
-      }
-      const controlPoint = controlPointRef.current;
-      if (controlPoint) {
-        controlPoint.removeEventListener('characteristicvaluechanged', handleControlPoint);
-        controlPoint.stopNotifications?.().catch(() => {});
-      }
-      if (gpsWatchRef.current !== null) {
-        navigator.geolocation.clearWatch(gpsWatchRef.current);
-      }
+      const c = characteristicRef.current;
+      if (c) { c.removeEventListener('characteristicvaluechanged', handleMeasurement); c.stopNotifications?.().catch(() => {}); }
+      const cp = controlPointRef.current;
+      if (cp) { cp.removeEventListener('characteristicvaluechanged', handleControlPoint); cp.stopNotifications?.().catch(() => {}); }
+      if (gpsWatchRef.current !== null) navigator.geolocation.clearWatch(gpsWatchRef.current);
       deviceRef.current?.removeEventListener('gattserverdisconnected', handleDisconnected);
       deviceRef.current?.gatt?.disconnect();
     };
   }, []);
 
+  // ─── Render ───────────────────────────────────────────────────────────────
   return (
     <main className="h-[100svh] overflow-hidden bg-zinc-950 p-1 text-zinc-100 antialiased sm:p-3">
       <div className="mx-auto flex h-full w-full max-w-[460px] flex-col overflow-hidden rounded-[1rem] border border-zinc-700 bg-zinc-900 shadow-2xl shadow-black sm:rounded-[1.6rem]">
-        <div className="relative border-b border-black bg-black px-3 py-1.5 font-mono text-xs font-bold text-zinc-100 sm:text-sm">
-          <div className="flex items-center justify-between">
-            <span>FAHRT</span>
-            <div className="flex items-center gap-3">
-              <span className={connected ? 'text-lime-300' : 'text-zinc-500'}>BLE</span>
-              <span className="flex items-end gap-1" title={gpsAccuracy === null ? gpsMessage : `GPS Genauigkeit ${Math.round(gpsAccuracy)} m`}>
-                <span className={gpsState === 'active' ? 'text-lime-300' : 'text-zinc-500'}>GPS</span>
-                {[1, 2, 3, 4].map((bar) => (
-                  <span
-                    key={bar}
-                    className={`block w-1 border border-zinc-500 ${
-                      gpsBars >= bar ? 'bg-lime-300' : 'bg-transparent'
-                    }`}
-                    style={{ height: `${bar * 3 + 3}px` }}
-                  />
-                ))}
-              </span>
-              <button
-                type="button"
-                onClick={() => setMenuOpen((open) => !open)}
-                className="grid h-8 w-8 place-items-center rounded border border-zinc-700 bg-zinc-900"
-                aria-label="Menue"
-              >
-                <span className="space-y-1">
-                  <span className="block h-0.5 w-4 bg-zinc-100" />
-                  <span className="block h-0.5 w-4 bg-zinc-100" />
-                  <span className="block h-0.5 w-4 bg-zinc-100" />
-                </span>
-              </button>
-            </div>
-          </div>
 
-          {menuOpen && (
-            <div className="absolute right-3 top-14 z-30 w-72 rounded border border-black bg-[#c2c6b8] p-2 font-mono text-black shadow-xl">
-              <button
-                type="button"
-                onClick={() => {
-                  setMenuOpen(false);
-                  connect(null);
-                }}
-                disabled={connectionState === 'scanning' || connectionState === 'reconnecting'}
-                className="flex w-full justify-between border-b border-black/40 px-2 py-3 text-left text-sm font-black disabled:opacity-50"
-              >
-                <span>{connected ? 'PEDAL NEU VERBINDEN' : 'PEDALE VERBINDEN'}</span>
-                <span>{connectionState === 'scanning' ? '...' : 'BLE'}</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setMenuOpen(false);
-                  calibratePedal();
-                }}
-                disabled={!connected || calibrationState === 'running' || calibrationState === 'unsupported'}
-                className="flex w-full justify-between border-b border-black/40 px-2 py-3 text-left text-sm font-black disabled:opacity-50"
-              >
-                <span>{calibrationState === 'running' ? 'KALIBRIERT...' : 'KALIBRIEREN'}</span>
-                <span>0x2A66</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setMenuOpen(false);
-                  if (gpsState === 'active' || gpsState === 'starting') stopGps();
-                  else startGps();
-                }}
-                className="flex w-full justify-between border-b border-black/40 px-2 py-3 text-left text-sm font-black"
-              >
-                <span>{gpsState === 'active' || gpsState === 'starting' ? 'GPS STOPPEN' : 'GPS AKTIVIEREN'}</span>
-                <span>{gpsState === 'active' ? 'ON' : gpsState === 'starting' ? '...' : 'OFF'}</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowDiagnostics((visible) => !visible);
-                  setMenuOpen(false);
-                }}
-                className="flex w-full justify-between border-b border-black/40 px-2 py-3 text-left text-sm font-black"
-              >
-                <span>DIAGNOSE</span>
-                <span>{showDiagnostics ? 'ON' : 'OFF'}</span>
-              </button>
-              <div className="flex w-full items-center justify-between border-b border-black/40 px-2 py-3 text-sm font-black">
-                <span>FTP</span>
-                <span className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setFtp((w) => Math.max(50, w - 5))}
-                    className="h-7 w-7 border border-black/60 text-base leading-none"
-                  >−</button>
-                  <span className="w-16 text-center">{ftp} W</span>
-                  <button
-                    type="button"
-                    onClick={() => setFtp((w) => Math.min(600, w + 5))}
-                    className="h-7 w-7 border border-black/60 text-base leading-none"
-                  >+</button>
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setLcdDarkMode((enabled) => !enabled)}
-                className="flex w-full items-center justify-between border-b border-black/40 px-2 py-3 text-left text-sm font-black"
-              >
-                <span>DARKMODE</span>
-                <span className={`flex h-5 w-10 items-center border-2 border-black p-0.5 ${lcdDarkMode ? 'justify-end bg-black' : 'justify-start bg-transparent'}`}>
-                  <span className={`h-3 w-3 border border-black ${lcdDarkMode ? 'bg-[#c2c6b8]' : 'bg-black'}`} />
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => window.location.reload()}
-                className="flex w-full justify-between border-b border-black/40 px-2 py-3 text-left text-sm font-black"
-              >
-                <span>AKTUALISIEREN</span>
-                <span>R</span>
-              </button>
-              <div className="px-2 py-3 text-xs font-bold leading-5">
-                <p>{connected ? deviceName || 'VERBUNDEN' : 'NICHT VERBUNDEN'}</p>
-                <p>{calibrationMessage}</p>
-                <p>{gpsMessage}</p>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <section className={`relative min-h-0 flex-1 overflow-hidden bg-[#b9bdaf] text-black transition ${lcdDarkMode ? 'invert' : ''} ${reconnectVisible || stale ? 'opacity-50' : ''}`}>
-          <div className="grid h-full grid-cols-2 grid-rows-[1.4fr_1fr_1fr_1fr_1fr_1fr_auto] border-b border-black/70">
-            <div className="col-span-2 border-b border-black/70 p-1.5 sm:p-2">
-              <div className="font-mono text-[clamp(0.68rem,2.8vw,0.9rem)] font-black">WATT</div>
-              <div className="flex items-end justify-center gap-2 font-mono tracking-normal">
-                <SevenText value={Math.max(0, metrics.watts)} digitClassName="h-[clamp(3.2rem,16vw,5.5rem)] w-[clamp(1.85rem,9vw,3.1rem)]" />
-                <span className="pb-[0.32em] text-[clamp(0.9rem,3.8vw,1.45rem)] font-black">W</span>
-              </div>
-            </div>
-
-            <div className="border-r border-black/70 p-2 sm:p-3">
-              <div className="font-mono text-[clamp(0.65rem,2.6vw,0.875rem)] font-black">KADENZ</div>
-              <div className="flex h-[calc(100%-1rem)] items-end justify-center gap-1 font-mono">
-                <SevenText value={metrics.cadence} digitClassName="h-[clamp(2.3rem,13vw,3.75rem)] w-[clamp(1.28rem,7vw,2.08rem)]" />
-                <span className="pb-1 text-[clamp(0.58rem,2.3vw,0.82rem)] font-black">RPM</span>
-              </div>
-            </div>
-            <div className="p-2 sm:p-3">
-              <div className="font-mono text-[clamp(0.65rem,2.6vw,0.875rem)] font-black">GESCHW.</div>
-              <div className="flex h-[calc(100%-1rem)] items-end justify-center gap-1 font-mono">
-                <SevenText value={metrics.speedKmh === null ? '--' : metrics.speedKmh.toFixed(1)} digitClassName="h-[clamp(2.3rem,13vw,3.75rem)] w-[clamp(1.28rem,7vw,2.08rem)]" />
-                <span className="pb-1 text-[clamp(0.55rem,2.1vw,0.75rem)] font-black">KM/H</span>
-              </div>
-            </div>
-
-            <div className="border-t border-r border-black/70 p-2 sm:p-3">
-              <div className="font-mono text-[clamp(0.65rem,2.6vw,0.875rem)] font-black">ZEIT</div>
-              <div className="flex h-[calc(100%-1rem)] items-end justify-center font-mono">
-                <SevenText value={formatDuration(metrics.movingSeconds)} digitClassName="h-[clamp(1.55rem,7vw,2.25rem)] w-[clamp(0.86rem,3.9vw,1.25rem)]" />
-              </div>
-            </div>
-            <div className="border-t border-black/70 p-2 sm:p-3">
-              <div className="font-mono text-[clamp(0.65rem,2.6vw,0.875rem)] font-black">DISTANZ</div>
-              <div className="flex h-[calc(100%-1rem)] items-end justify-center gap-1 font-mono">
-                <SevenText value={metrics.distanceKm.toFixed(2)} digitClassName="h-[clamp(1.9rem,9vw,2.8rem)] w-[clamp(1.05rem,5vw,1.55rem)]" />
-                <span className="pb-1 text-[clamp(0.55rem,2.1vw,0.75rem)] font-black">KM</span>
-              </div>
-            </div>
-
-            <div className="border-t border-r border-black/70 p-2 sm:p-3">
-              <div className="font-mono text-[clamp(0.65rem,2.6vw,0.875rem)] font-black">Ø WATT</div>
-              <div className="flex h-[calc(100%-1rem)] items-end justify-center gap-1 font-mono">
-                <SevenText value={metrics.avgWatts} digitClassName="h-[clamp(2rem,10vw,3.2rem)] w-[clamp(1.1rem,5.5vw,1.78rem)]" />
-                <span className="pb-1 text-[clamp(0.58rem,2.3vw,0.82rem)] font-black">W</span>
-              </div>
-            </div>
-            <div className="border-t border-black/70 p-2 sm:p-3">
-              <div className="font-mono text-[clamp(0.65rem,2.6vw,0.875rem)] font-black">MAX WATT</div>
-              <div className="flex h-[calc(100%-1rem)] items-end justify-center gap-1 font-mono">
-                <SevenText value={metrics.maxWatts} digitClassName="h-[clamp(2rem,10vw,3.2rem)] w-[clamp(1.1rem,5.5vw,1.78rem)]" />
-                <span className="pb-1 text-[clamp(0.58rem,2.3vw,0.82rem)] font-black">W</span>
-              </div>
-            </div>
-
-            <div className="border-t border-r border-black/70 p-2 sm:p-3">
-              <div className="font-mono text-[clamp(0.65rem,2.6vw,0.875rem)] font-black">Ø KM/H</div>
-              <div className="flex h-[calc(100%-1rem)] items-end justify-center gap-1 font-mono">
-                <SevenText value={metrics.movingSeconds > 0 ? (metrics.distanceKm / (metrics.movingSeconds / 3600)).toFixed(1) : '--'} digitClassName="h-[clamp(1.8rem,8.5vw,2.7rem)] w-[clamp(1rem,4.8vw,1.5rem)]" />
-                <span className="pb-1 text-[clamp(0.55rem,2.1vw,0.75rem)] font-black">KM/H</span>
-              </div>
-            </div>
-            <div className="border-t border-black/70 p-2 sm:p-3">
-              <div className="font-mono text-[clamp(0.65rem,2.6vw,0.875rem)] font-black">MAX KM/H</div>
-              <div className="flex h-[calc(100%-1rem)] items-end justify-center gap-1 font-mono">
-                <SevenText value={metrics.maxSpeedKmh ? metrics.maxSpeedKmh.toFixed(1) : '--'} digitClassName="h-[clamp(1.8rem,8.5vw,2.7rem)] w-[clamp(1rem,4.8vw,1.5rem)]" />
-                <span className="pb-1 text-[clamp(0.55rem,2.1vw,0.75rem)] font-black">KM/H</span>
-              </div>
-            </div>
-
-            <div className="border-t border-r border-black/70 p-2 sm:p-3">
-              <div className="font-mono text-[clamp(0.65rem,2.6vw,0.875rem)] font-black">KJ</div>
-              <div className="flex h-[calc(100%-1rem)] items-end justify-center font-mono">
-                <SevenText value={Math.round(metrics.energyKj)} digitClassName="h-[clamp(2rem,10vw,3.2rem)] w-[clamp(1.1rem,5.5vw,1.78rem)]" />
-              </div>
-            </div>
-            <div className="border-t border-black/70 p-2 sm:p-3">
-              <div className="font-mono text-[clamp(0.65rem,2.6vw,0.875rem)] font-black">BALANCE</div>
-              <div className="flex h-[calc(100%-1rem)] items-end justify-center font-mono">
-                <SevenText
-                  value={
-                    metrics.balance === null
-                      ? '--'
-                      : metrics.balanceReference === 'right'
-                        ? `${Math.round(100 - metrics.balance)}/${Math.round(metrics.balance)}`
-                        : `${Math.round(metrics.balance)}/${Math.round(100 - metrics.balance)}`
-                  }
-                  digitClassName="h-[clamp(2rem,10vw,3.2rem)] w-[clamp(1.1rem,5.5vw,1.78rem)]"
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-black bg-black px-3 py-2 font-mono text-xs font-black">
+          <span className="text-zinc-100 sm:text-sm">XPEDO</span>
+          <div className="flex items-center gap-3">
+            <span className={connected ? 'text-lime-300' : 'text-zinc-600'}>BLE</span>
+            <span
+              className="flex items-end gap-1"
+              title={gpsAccuracy === null ? gpsMessage : `GPS ${Math.round(gpsAccuracy)} m`}
+            >
+              <span className={gpsState === 'active' ? 'text-lime-300' : 'text-zinc-600'}>GPS</span>
+              {[1, 2, 3, 4].map((bar) => (
+                <span
+                  key={bar}
+                  className={`block w-1 border border-zinc-600 ${gpsBars >= bar ? 'bg-lime-300' : 'bg-transparent'}`}
+                  style={{ height: `${bar * 3 + 3}px` }}
                 />
-              </div>
-            </div>
-
-            <div className="col-span-2 border-t border-black/70 p-2">
-              <div className="mb-1 flex justify-between font-mono text-[clamp(0.58rem,2.3vw,0.78rem)] font-black">
-                <span>ZONE</span>
-                <span>{zone.zone.toUpperCase()}</span>
-              </div>
-              <div className="grid h-3 grid-cols-[repeat(16,minmax(0,1fr))] gap-px border border-black bg-black p-px">
-                {Array.from({ length: 16 }).map((_, index) => {
-                  const active = index < Math.max(1, Math.round((parseFloat(zone.width) / 100) * 16));
-                  return <span key={index} className={active ? 'bg-black' : 'bg-[#9da294]'} />;
-                })}
-                </div>
-              </div>
-            </div>
-
-          {showDiagnostics && (
-            <div className="absolute inset-x-0 bottom-0 max-h-[45%] overflow-auto border-t-2 border-black bg-[#b9bdaf] p-3 font-mono text-xs font-bold leading-5">
-              <div className="flex justify-between">
-                <span>FLAGS {metrics.flagsHex}</span>
-                <span>{diagnostics.byteLength ? `${diagnostics.byteLength} BYTES` : 'WARTET'}</span>
-              </div>
-              <p className="mt-2 break-all">{diagnostics.rawHex || 'NOCH KEIN MEASUREMENT'}</p>
-              <p className="mt-2">FELDER: {diagnostics.fields.length ? diagnostics.fields.join(', ') : 'KEINE OPTIONALEN FELDER'}</p>
-              <p>FEATURE: {diagnostics.featureHex}</p>
-              <p>SENSOR: {diagnostics.sensorLocation}</p>
-              <p>GATT: {diagnostics.characteristics.map((item) => item.uuid).join(' ') || 'UNBEKANNT'}</p>
-            </div>
-          )}
-
-          {reconnectVisible && (
-            <div className="absolute inset-0 grid place-items-center bg-[#b9bdaf]/80 p-5">
-              <div className="border-2 border-black bg-[#c2c6b8] p-5 text-center font-mono text-black">
-                <h2 className="text-xl font-black">VERBINDUNG GETRENNT</h2>
-                <p className="mt-2 text-sm font-bold">{error || 'KEINE DATEN VOM PEDAL'}</p>
-                <button type="button" onClick={reconnect} className="mt-4 border-2 border-black px-4 py-3 text-sm font-black">
-                  WIEDERHERSTELLEN
-                </button>
-              </div>
-            </div>
-          )}
-        </section>
-
-        <div className="grid grid-cols-3 border-t border-black bg-black px-3 py-1.5 font-mono text-[0.65rem] font-black text-zinc-200 sm:text-xs">
-          <button type="button" onClick={() => setMenuOpen(true)} className="text-left">
-            OPTIONEN
-          </button>
-          <div className="text-center">● ○ ○</div>
-          <button
-            type="button"
-            onClick={() => {
-              if (gpsState === 'active' || gpsState === 'starting') stopGps();
-              else startGps();
-            }}
-            className="text-right"
-          >
-            GPS {gpsState === 'active' ? 'ON' : 'OFF'}
-          </button>
+              ))}
+            </span>
+          </div>
         </div>
+
+        {/* Content */}
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          {tab === 'ride' && (
+            <RideView
+              metrics={metrics}
+              zone={zone}
+              lcdDarkMode={lcdDarkMode}
+              reconnectVisible={reconnectVisible}
+              stale={stale}
+              showDiagnostics={showDiagnostics}
+              diagnostics={diagnostics}
+              error={error}
+              onReconnect={reconnect}
+              onSaveRide={saveRide}
+              onResetMetrics={resetMetrics}
+            />
+          )}
+          {tab === 'history' && (
+            <HistoryView rides={rides} onDelete={deleteRide} />
+          )}
+          {tab === 'settings' && (
+            <SettingsView
+              ftp={ftp} setFtp={setFtp}
+              gpsAlwaysOn={gpsAlwaysOn} setGpsAlwaysOn={setGpsAlwaysOn}
+              lcdDarkMode={lcdDarkMode} setLcdDarkMode={setLcdDarkMode}
+              showDiagnostics={showDiagnostics} setShowDiagnostics={setShowDiagnostics}
+              connected={connected} deviceName={deviceName} connectionState={connectionState}
+              calibrationState={calibrationState} calibrationMessage={calibrationMessage}
+              gpsState={gpsState} gpsMessage={gpsMessage}
+              diagnostics={diagnostics} metrics={metrics}
+              onConnect={() => connect(null)}
+              onCalibrate={calibratePedal}
+            />
+          )}
+        </div>
+
+        {/* Footer Tab Bar */}
+        <nav className="grid grid-cols-3 border-t border-zinc-800 bg-zinc-950">
+          {[
+            { id: 'ride',     label: 'FAHRT'    },
+            { id: 'history',  label: 'FAHRTEN'  },
+            { id: 'settings', label: 'EINST.'   },
+          ].map(({ id, label }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setTab(id)}
+              className={`py-3 font-mono text-xs font-black transition-colors ${
+                tab === id
+                  ? 'border-t-2 border-lime-400 text-lime-300'
+                  : 'border-t-2 border-transparent text-zinc-600 hover:text-zinc-400'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
       </div>
     </main>
   );
