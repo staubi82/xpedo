@@ -605,9 +605,9 @@ export default function App() {
   }, []);
 
   return (
-    <main className="h-[100dvh] overflow-hidden bg-zinc-950 p-2 text-zinc-100 antialiased sm:p-4">
-      <div className="mx-auto flex h-full w-full max-w-[460px] flex-col overflow-hidden rounded-[1.4rem] border border-zinc-700 bg-zinc-900 shadow-2xl shadow-black sm:rounded-[2rem]">
-        <div className="relative border-b border-black bg-black px-4 py-3 font-mono text-sm font-bold text-zinc-100">
+    <main className="h-[100dvh] overflow-hidden bg-zinc-950 p-1 text-zinc-100 antialiased sm:p-3">
+      <div className="mx-auto flex h-full w-full max-w-[460px] flex-col overflow-hidden rounded-[1rem] border border-zinc-700 bg-zinc-900 shadow-2xl shadow-black sm:rounded-[1.6rem]">
+        <div className="relative border-b border-black bg-black px-3 py-2 font-mono text-xs font-bold text-zinc-100 sm:text-sm">
           <div className="flex items-center justify-between">
             <span>{formatClock(clock)}</span>
             <div className="flex items-center gap-3">
@@ -698,12 +698,12 @@ export default function App() {
         </div>
 
         <section className={`relative min-h-0 flex-1 overflow-hidden bg-[#b9bdaf] text-black transition ${reconnectVisible || stale ? 'opacity-50' : ''}`}>
-          <div className="grid h-full grid-cols-2 grid-rows-[1.85fr_1fr_1fr_1fr_1fr_0.36fr] border-b border-black/70">
+          <div className="grid h-full grid-cols-2 grid-rows-[1.42fr_1fr_1fr_1fr_1fr_0.3fr] border-b border-black/70">
             <div className="col-span-2 border-b border-black/70 p-2 sm:p-3">
               <div className="font-mono text-[clamp(0.68rem,2.8vw,0.9rem)] font-black">WATT</div>
               <div className="flex items-end justify-center gap-2 font-mono tracking-normal">
-                <span className="text-[clamp(4.8rem,24vw,8.2rem)] font-black leading-none">{Math.max(0, metrics.watts)}</span>
-                <span className="pb-[0.45em] text-[clamp(1.15rem,5vw,2rem)] font-black">W</span>
+                <span className="text-[clamp(4rem,20vw,6.8rem)] font-black leading-none">{Math.max(0, metrics.watts)}</span>
+                <span className="pb-[0.38em] text-[clamp(1rem,4.2vw,1.7rem)] font-black">W</span>
               </div>
             </div>
 
@@ -822,7 +822,7 @@ export default function App() {
           )}
         </section>
 
-        <div className="grid grid-cols-3 border-t border-black bg-black px-4 py-3 font-mono text-xs font-black text-zinc-200">
+        <div className="grid grid-cols-3 border-t border-black bg-black px-3 py-2 font-mono text-[0.68rem] font-black text-zinc-200 sm:text-xs">
           <button type="button" onClick={() => setMenuOpen(true)} className="text-left">
             OPTIONEN
           </button>
