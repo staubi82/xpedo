@@ -320,35 +320,49 @@ function CalibrationWizard({ connected, calibrationState, calibrationMessage, on
 }
 
 function CranksetSvg({ dimmed }) {
-  const c = dimmed ? '#4b5563' : '#6b7280';
-  const bright = dimmed ? '#374151' : '#9ca3af';
+  const c      = dimmed ? '#4b5563' : '#71717a';
+  const bright = dimmed ? '#374151' : '#a1a1aa';
+  const bg     = dimmed ? '#1f2937' : '#27272a';
+
   return (
     <svg viewBox="0 0 160 160" width="140" height="140" fill="none" xmlns="http://www.w3.org/2000/svg">
       {/* Outer chain ring */}
-      <circle cx="80" cy="88" r="52" stroke={c} strokeWidth="5" />
+      <circle cx="80" cy="80" r="50" stroke={c} strokeWidth="5" />
       {/* Inner ring */}
-      <circle cx="80" cy="88" r="34" stroke={c} strokeWidth="3" />
-      {/* Spider arms */}
+      <circle cx="80" cy="80" r="32" stroke={c} strokeWidth="3" />
+      {/* Spider arms (5-bolt) */}
       {[90, 162, 234, 306, 18].map((deg) => {
         const r = (deg * Math.PI) / 180;
-        return <line key={deg} x1="80" y1="88" x2={80 + Math.cos(r) * 32} y2={88 + Math.sin(r) * 32} stroke={c} strokeWidth="3" strokeLinecap="round" />;
+        return <line key={deg} x1="80" y1="80" x2={80 + Math.cos(r) * 30} y2={80 + Math.sin(r) * 30} stroke={c} strokeWidth="3" strokeLinecap="round" />;
       })}
-      {/* Center bolt */}
-      <circle cx="80" cy="88" r="9" fill={c} />
-      <circle cx="80" cy="88" r="4" fill={dimmed ? '#1f2937' : '#374151'} />
-      {/* Crank arm up-left */}
-      <line x1="80" y1="88" x2="50" y2="32" stroke={bright} strokeWidth="9" strokeLinecap="round" />
-      {/* Pedal 1 */}
-      <rect x="24" y="23" width="52" height="14" rx="7" fill={c} />
-      {/* Crank arm down-right */}
-      <line x1="80" y1="88" x2="110" y2="144" stroke={c} strokeWidth="9" strokeLinecap="round" />
-      {/* Pedal 2 */}
-      <rect x="84" y="139" width="52" height="14" rx="7" fill={dimmed ? '#374151' : '#4b5563'} />
       {/* Chain teeth */}
-      {Array.from({ length: 16 }).map((_, i) => {
-        const a = (i / 16) * Math.PI * 2 - 0.1;
-        return <circle key={i} cx={80 + Math.cos(a) * 54} cy={88 + Math.sin(a) * 54} r="2.5" fill={c} />;
+      {Array.from({ length: 18 }).map((_, i) => {
+        const a = (i / 18) * Math.PI * 2;
+        return <circle key={i} cx={80 + Math.cos(a) * 52} cy={80 + Math.sin(a) * 52} r="2.2" fill={c} />;
       })}
+      {/* Center BB */}
+      <circle cx="80" cy="80" r="9" fill={c} />
+      <circle cx="80" cy="80" r="4" fill={bg} />
+
+      {/* Crank arm — 12 o'clock (up) */}
+      <rect x="74" y="22" width="12" height="50" rx="6" fill={c} />
+      {/* Pedal oben — horizontal */}
+      <rect x="50" y="14" width="60" height="15" rx="7" fill={c} />
+      {/* Pedal-pin links oben */}
+      <rect x="51" y="11" width="4" height="21" rx="2" fill={bright} />
+      <rect x="59" y="11" width="4" height="21" rx="2" fill={bright} />
+      <rect x="97" y="11" width="4" height="21" rx="2" fill={bright} />
+      <rect x="105" y="11" width="4" height="21" rx="2" fill={bright} />
+
+      {/* Crank arm — 6 o'clock (down, highlighted) */}
+      <rect x="74" y="88" width="12" height="52" rx="6" fill={bright} />
+      {/* Pedal unten — horizontal */}
+      <rect x="50" y="131" width="60" height="15" rx="7" fill={bright} />
+      {/* Pedal-pins unten */}
+      <rect x="51" y="128" width="4" height="21" rx="2" fill={dimmed ? bright : '#d4d4d8'} />
+      <rect x="59" y="128" width="4" height="21" rx="2" fill={dimmed ? bright : '#d4d4d8'} />
+      <rect x="97" y="128" width="4" height="21" rx="2" fill={dimmed ? bright : '#d4d4d8'} />
+      <rect x="105" y="128" width="4" height="21" rx="2" fill={dimmed ? bright : '#d4d4d8'} />
     </svg>
   );
 }
