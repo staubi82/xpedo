@@ -169,6 +169,7 @@ export default function App() {
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [gpsState, setGpsState] = useState('off');
   const [gpsMessage, setGpsMessage] = useState('GPS aus');
+  const [gpsAccuracy, setGpsAccuracy] = useState(null);
   const [diagnostics, setDiagnostics] = useState({
     rawHex: '',
     byteLength: 0,
@@ -197,6 +198,18 @@ export default function App() {
   const cadenceProgress = Math.min(100, Math.max(0, (metrics.cadence / 130) * 100));
   const cadenceRing = `conic-gradient(rgb(34 211 238) ${cadenceProgress * 3.6}deg, rgb(30 41 59) 0deg)`;
   const zone = useMemo(() => powerZone(metrics.watts), [metrics.watts]);
+  const gpsBars =
+    gpsState !== 'active' || gpsAccuracy === null
+      ? 0
+      : gpsAccuracy <= 5
+        ? 4
+        : gpsAccuracy <= 10
+          ? 3
+          : gpsAccuracy <= 25
+            ? 2
+            : gpsAccuracy <= 50
+              ? 1
+              : 0;
 
   async function connect(existingDevice = deviceRef.current) {
     setError('');
@@ -336,11 +349,13 @@ export default function App() {
     if (!navigator.geolocation) {
       setGpsState('error');
       setGpsMessage('GPS nicht verfuegbar');
+      setGpsAccuracy(null);
       return;
     }
 
     setGpsState('starting');
     setGpsMessage('GPS wird aktiviert...');
+    setGpsAccuracy(null);
 
     gpsWatchRef.current = navigator.geolocation.watchPosition(
       (position) => {
@@ -364,6 +379,7 @@ export default function App() {
 
         lastPositionRef.current = currentPosition;
         setGpsState('active');
+        setGpsAccuracy(accuracy);
         setGpsMessage(`GPS aktiv, Genauigkeit ${Math.round(accuracy)} m`);
 
         setMetrics((current) => ({
@@ -379,6 +395,7 @@ export default function App() {
       },
       (gpsError) => {
         setGpsState('error');
+        setGpsAccuracy(null);
         setGpsMessage(gpsError?.message || 'GPS konnte nicht gestartet werden');
       },
       {
@@ -396,6 +413,7 @@ export default function App() {
     }
     lastPositionRef.current = null;
     setGpsState('off');
+    setGpsAccuracy(null);
     setGpsMessage('GPS aus');
     setMetrics((current) => ({ ...current, speedKmh: null }));
   }
@@ -585,7 +603,18 @@ export default function App() {
             <span>{formatClock(clock)}</span>
             <div className="flex items-center gap-3">
               <span className={connected ? 'text-lime-300' : 'text-zinc-500'}>BLE</span>
-              <span className={gpsState === 'active' ? 'text-lime-300' : 'text-zinc-500'}>GPS</span>
+              <span className="flex items-end gap-1" title={gpsAccuracy === null ? gpsMessage : `GPS Genauigkeit ${Math.round(gpsAccuracy)} m`}>
+                <span className={gpsState === 'active' ? 'text-lime-300' : 'text-zinc-500'}>GPS</span>
+                {[1, 2, 3, 4].map((bar) => (
+                  <span
+                    key={bar}
+                    className={`block w-1 border border-zinc-500 ${
+                      gpsBars >= bar ? 'bg-lime-300' : 'bg-transparent'
+                    }`}
+                    style={{ height: `${bar * 3 + 3}px` }}
+                  />
+                ))}
+              </span>
               <button
                 type="button"
                 onClick={() => setMenuOpen((open) => !open)}
