@@ -453,6 +453,7 @@ export default function App() {
       const nextZone = powerZone(parsed.watts);
 
       return {
+        ...current,
         watts: parsed.watts,
         cadence: nextCadence ?? current.cadence,
         balance: parsed.balance ?? current.balance,
