@@ -578,8 +578,8 @@ export default function App() {
   }, []);
 
   return (
-    <main className="min-h-screen bg-zinc-950 p-3 text-zinc-100 antialiased sm:p-6">
-      <div className="mx-auto flex min-h-[calc(100vh-1.5rem)] w-full max-w-[460px] flex-col overflow-hidden rounded-[2rem] border border-zinc-700 bg-zinc-900 shadow-2xl shadow-black">
+    <main className="h-[100dvh] overflow-hidden bg-zinc-950 p-2 text-zinc-100 antialiased sm:p-4">
+      <div className="mx-auto flex h-full w-full max-w-[460px] flex-col overflow-hidden rounded-[1.4rem] border border-zinc-700 bg-zinc-900 shadow-2xl shadow-black sm:rounded-[2rem]">
         <div className="relative border-b border-black bg-black px-4 py-3 font-mono text-sm font-bold text-zinc-100">
           <div className="flex items-center justify-between">
             <span>{formatClock(clock)}</span>
@@ -659,82 +659,82 @@ export default function App() {
           )}
         </div>
 
-        <section className={`relative flex-1 bg-[#b9bdaf] text-black transition ${reconnectVisible || stale ? 'opacity-50' : ''}`}>
-          <div className="grid grid-cols-2 border-b border-black/70">
-            <div className="col-span-2 border-b border-black/70 p-4">
-              <div className="mb-1 font-mono text-sm font-black">WATT</div>
+        <section className={`relative min-h-0 flex-1 overflow-hidden bg-[#b9bdaf] text-black transition ${reconnectVisible || stale ? 'opacity-50' : ''}`}>
+          <div className="grid h-full grid-cols-2 grid-rows-[1.85fr_1fr_1fr_1fr_1fr_0.36fr] border-b border-black/70">
+            <div className="col-span-2 border-b border-black/70 p-2 sm:p-3">
+              <div className="font-mono text-[clamp(0.68rem,2.8vw,0.9rem)] font-black">WATT</div>
               <div className="flex items-end justify-center gap-2 font-mono tracking-normal">
-                <span className="text-[7.8rem] font-black leading-none sm:text-[8.8rem]">{Math.max(0, metrics.watts)}</span>
-                <span className="pb-4 text-3xl font-black">W</span>
+                <span className="text-[clamp(4.8rem,24vw,8.2rem)] font-black leading-none">{Math.max(0, metrics.watts)}</span>
+                <span className="pb-[0.45em] text-[clamp(1.15rem,5vw,2rem)] font-black">W</span>
               </div>
             </div>
 
-            <div className="border-r border-black/70 p-3">
-              <div className="font-mono text-sm font-black">KADENZ</div>
-              <div className="mt-2 flex items-end justify-center gap-1 font-mono">
-                <span className="text-6xl font-black leading-none">{metrics.cadence}</span>
-                <span className="pb-1 text-sm font-black">RPM</span>
+            <div className="border-r border-black/70 p-2 sm:p-3">
+              <div className="font-mono text-[clamp(0.65rem,2.6vw,0.875rem)] font-black">KADENZ</div>
+              <div className="flex h-[calc(100%-1rem)] items-end justify-center gap-1 font-mono">
+                <span className="text-[clamp(2.3rem,13vw,3.75rem)] font-black leading-none">{metrics.cadence}</span>
+                <span className="pb-1 text-[clamp(0.58rem,2.3vw,0.82rem)] font-black">RPM</span>
               </div>
             </div>
-            <div className="p-3">
-              <div className="font-mono text-sm font-black">GESCHW.</div>
-              <div className="mt-2 flex items-end justify-center gap-1 font-mono">
-                <span className="text-6xl font-black leading-none">{metrics.speedKmh === null ? '--' : metrics.speedKmh.toFixed(1)}</span>
-                <span className="pb-1 text-xs font-black">KM/H</span>
-              </div>
-            </div>
-
-            <div className="border-t border-r border-black/70 p-3">
-              <div className="font-mono text-sm font-black">ZEIT</div>
-              <div className="mt-3 text-center font-mono text-3xl font-black leading-none">{formatDuration(metrics.movingSeconds)}</div>
-            </div>
-            <div className="border-t border-black/70 p-3">
-              <div className="font-mono text-sm font-black">DISTANZ</div>
-              <div className="mt-3 flex items-end justify-center gap-1 font-mono">
-                <span className="text-4xl font-black leading-none">{metrics.distanceKm.toFixed(2)}</span>
-                <span className="pb-1 text-xs font-black">KM</span>
+            <div className="p-2 sm:p-3">
+              <div className="font-mono text-[clamp(0.65rem,2.6vw,0.875rem)] font-black">GESCHW.</div>
+              <div className="flex h-[calc(100%-1rem)] items-end justify-center gap-1 font-mono">
+                <span className="text-[clamp(2.3rem,13vw,3.75rem)] font-black leading-none">{metrics.speedKmh === null ? '--' : metrics.speedKmh.toFixed(1)}</span>
+                <span className="pb-1 text-[clamp(0.55rem,2.1vw,0.75rem)] font-black">KM/H</span>
               </div>
             </div>
 
-            <div className="border-t border-r border-black/70 p-3">
-              <div className="font-mono text-sm font-black">Ø WATT</div>
-              <div className="mt-2 flex items-end justify-center gap-1 font-mono">
-                <span className="text-5xl font-black leading-none">{metrics.avgWatts}</span>
-                <span className="pb-1 text-sm font-black">W</span>
-              </div>
+            <div className="border-t border-r border-black/70 p-2 sm:p-3">
+              <div className="font-mono text-[clamp(0.65rem,2.6vw,0.875rem)] font-black">ZEIT</div>
+              <div className="flex h-[calc(100%-1rem)] items-center justify-center font-mono text-[clamp(1.55rem,7vw,2.25rem)] font-black leading-none">{formatDuration(metrics.movingSeconds)}</div>
             </div>
-            <div className="border-t border-black/70 p-3">
-              <div className="font-mono text-sm font-black">MAX WATT</div>
-              <div className="mt-2 flex items-end justify-center gap-1 font-mono">
-                <span className="text-5xl font-black leading-none">{metrics.maxWatts}</span>
-                <span className="pb-1 text-sm font-black">W</span>
+            <div className="border-t border-black/70 p-2 sm:p-3">
+              <div className="font-mono text-[clamp(0.65rem,2.6vw,0.875rem)] font-black">DISTANZ</div>
+              <div className="flex h-[calc(100%-1rem)] items-center justify-center gap-1 font-mono">
+                <span className="text-[clamp(1.9rem,9vw,2.8rem)] font-black leading-none">{metrics.distanceKm.toFixed(2)}</span>
+                <span className="pb-1 text-[clamp(0.55rem,2.1vw,0.75rem)] font-black">KM</span>
               </div>
             </div>
 
-            <div className="border-t border-r border-black/70 p-3">
-              <div className="font-mono text-sm font-black">Ø KM/H</div>
-              <div className="mt-2 flex items-end justify-center gap-1 font-mono">
-                <span className="text-4xl font-black leading-none">
+            <div className="border-t border-r border-black/70 p-2 sm:p-3">
+              <div className="font-mono text-[clamp(0.65rem,2.6vw,0.875rem)] font-black">Ø WATT</div>
+              <div className="flex h-[calc(100%-1rem)] items-end justify-center gap-1 font-mono">
+                <span className="text-[clamp(2rem,10vw,3.2rem)] font-black leading-none">{metrics.avgWatts}</span>
+                <span className="pb-1 text-[clamp(0.58rem,2.3vw,0.82rem)] font-black">W</span>
+              </div>
+            </div>
+            <div className="border-t border-black/70 p-2 sm:p-3">
+              <div className="font-mono text-[clamp(0.65rem,2.6vw,0.875rem)] font-black">MAX WATT</div>
+              <div className="flex h-[calc(100%-1rem)] items-end justify-center gap-1 font-mono">
+                <span className="text-[clamp(2rem,10vw,3.2rem)] font-black leading-none">{metrics.maxWatts}</span>
+                <span className="pb-1 text-[clamp(0.58rem,2.3vw,0.82rem)] font-black">W</span>
+              </div>
+            </div>
+
+            <div className="border-t border-r border-black/70 p-2 sm:p-3">
+              <div className="font-mono text-[clamp(0.65rem,2.6vw,0.875rem)] font-black">Ø KM/H</div>
+              <div className="flex h-[calc(100%-1rem)] items-end justify-center gap-1 font-mono">
+                <span className="text-[clamp(1.8rem,8.5vw,2.7rem)] font-black leading-none">
                   {metrics.movingSeconds > 0 ? (metrics.distanceKm / (metrics.movingSeconds / 3600)).toFixed(1) : '--'}
                 </span>
-                <span className="pb-1 text-xs font-black">KM/H</span>
+                <span className="pb-1 text-[clamp(0.55rem,2.1vw,0.75rem)] font-black">KM/H</span>
               </div>
             </div>
-            <div className="border-t border-black/70 p-3">
-              <div className="font-mono text-sm font-black">MAX KM/H</div>
-              <div className="mt-2 flex items-end justify-center gap-1 font-mono">
-                <span className="text-4xl font-black leading-none">{metrics.maxSpeedKmh ? metrics.maxSpeedKmh.toFixed(1) : '--'}</span>
-                <span className="pb-1 text-xs font-black">KM/H</span>
+            <div className="border-t border-black/70 p-2 sm:p-3">
+              <div className="font-mono text-[clamp(0.65rem,2.6vw,0.875rem)] font-black">MAX KM/H</div>
+              <div className="flex h-[calc(100%-1rem)] items-end justify-center gap-1 font-mono">
+                <span className="text-[clamp(1.8rem,8.5vw,2.7rem)] font-black leading-none">{metrics.maxSpeedKmh ? metrics.maxSpeedKmh.toFixed(1) : '--'}</span>
+                <span className="pb-1 text-[clamp(0.55rem,2.1vw,0.75rem)] font-black">KM/H</span>
               </div>
             </div>
 
-            <div className="border-t border-r border-black/70 p-3">
-              <div className="font-mono text-sm font-black">KJ</div>
-              <div className="mt-2 text-center font-mono text-5xl font-black leading-none">{Math.round(metrics.energyKj)}</div>
+            <div className="border-t border-r border-black/70 p-2 sm:p-3">
+              <div className="font-mono text-[clamp(0.65rem,2.6vw,0.875rem)] font-black">KJ</div>
+              <div className="flex h-[calc(100%-1rem)] items-center justify-center font-mono text-[clamp(2rem,10vw,3.2rem)] font-black leading-none">{Math.round(metrics.energyKj)}</div>
             </div>
-            <div className="border-t border-black/70 p-3">
-              <div className="font-mono text-sm font-black">BALANCE</div>
-              <div className="mt-2 text-center font-mono text-5xl font-black leading-none">
+            <div className="border-t border-black/70 p-2 sm:p-3">
+              <div className="font-mono text-[clamp(0.65rem,2.6vw,0.875rem)] font-black">BALANCE</div>
+              <div className="flex h-[calc(100%-1rem)] items-center justify-center font-mono text-[clamp(2rem,10vw,3.2rem)] font-black leading-none">
                 {metrics.balance === null
                   ? '--'
                   : metrics.balanceReference === 'right'
@@ -743,12 +743,12 @@ export default function App() {
               </div>
             </div>
 
-            <div className="col-span-2 border-t border-black/70 p-3">
-              <div className="mb-2 flex justify-between font-mono text-sm font-black">
+            <div className="col-span-2 border-t border-black/70 p-2">
+              <div className="mb-1 flex justify-between font-mono text-[clamp(0.58rem,2.3vw,0.78rem)] font-black">
                 <span>ZONE</span>
                 <span>{zone.zone.toUpperCase()}</span>
               </div>
-              <div className="grid h-4 grid-cols-[repeat(16,minmax(0,1fr))] gap-px border border-black bg-black p-px">
+              <div className="grid h-3 grid-cols-[repeat(16,minmax(0,1fr))] gap-px border border-black bg-black p-px">
                 {Array.from({ length: 16 }).map((_, index) => {
                   const active = index < Math.max(1, Math.round((parseFloat(zone.width) / 100) * 16));
                   return <span key={index} className={active ? 'bg-black' : 'bg-[#9da294]'} />;
@@ -758,7 +758,7 @@ export default function App() {
             </div>
 
           {showDiagnostics && (
-            <div className="border-b border-black/70 p-3 font-mono text-xs font-bold leading-5">
+            <div className="absolute inset-x-0 bottom-0 max-h-[45%] overflow-auto border-t-2 border-black bg-[#b9bdaf] p-3 font-mono text-xs font-bold leading-5">
               <div className="flex justify-between">
                 <span>FLAGS {metrics.flagsHex}</span>
                 <span>{diagnostics.byteLength ? `${diagnostics.byteLength} BYTES` : 'WARTET'}</span>
