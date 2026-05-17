@@ -121,10 +121,6 @@ function formatDuration(totalSeconds) {
   return [hours, minutes, seconds].map((part) => String(part).padStart(2, '0')).join(':');
 }
 
-function formatClock(date) {
-  return date.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-}
-
 function distanceInKm(a, b) {
   const radiusKm = 6371;
   const toRad = (value) => (value * Math.PI) / 180;
@@ -159,7 +155,6 @@ function shortUuid(uuid) {
 
 export default function App() {
   const [metrics, setMetrics] = useState(initialMetrics);
-  const [clock, setClock] = useState(new Date());
   const [connectionState, setConnectionState] = useState('idle');
   const [deviceName, setDeviceName] = useState('');
   const [error, setError] = useState('');
@@ -550,11 +545,6 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const timer = window.setInterval(() => setClock(new Date()), 1000);
-    return () => window.clearInterval(timer);
-  }, []);
-
-  useEffect(() => {
     let cancelled = false;
 
     async function connectKnownDevice() {
@@ -609,7 +599,7 @@ export default function App() {
       <div className="mx-auto flex h-full w-full max-w-[460px] flex-col overflow-hidden rounded-[1rem] border border-zinc-700 bg-zinc-900 shadow-2xl shadow-black sm:rounded-[1.6rem]">
         <div className="relative border-b border-black bg-black px-3 py-2 font-mono text-xs font-bold text-zinc-100 sm:text-sm">
           <div className="flex items-center justify-between">
-            <span>{formatClock(clock)}</span>
+            <span>FAHRT</span>
             <div className="flex items-center gap-3">
               <span className={connected ? 'text-lime-300' : 'text-zinc-500'}>BLE</span>
               <span className="flex items-end gap-1" title={gpsAccuracy === null ? gpsMessage : `GPS Genauigkeit ${Math.round(gpsAccuracy)} m`}>
