@@ -164,6 +164,7 @@ export default function App() {
   const [calibrationMessage, setCalibrationMessage] = useState('Noch nicht kalibriert');
   const [menuOpen, setMenuOpen] = useState(false);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [lcdDarkMode, setLcdDarkMode] = useState(() => localStorage.getItem('xpedo-lcd-dark') === '1');
   const [gpsState, setGpsState] = useState('off');
   const [gpsMessage, setGpsMessage] = useState('GPS aus');
   const [gpsAccuracy, setGpsAccuracy] = useState(null);
@@ -574,6 +575,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    localStorage.setItem('xpedo-lcd-dark', lcdDarkMode ? '1' : '0');
+  }, [lcdDarkMode]);
+
+  useEffect(() => {
     return () => {
       window.clearTimeout(reconnectTimerRef.current);
       const characteristic = characteristicRef.current;
@@ -678,6 +683,16 @@ export default function App() {
                 <span>DIAGNOSE</span>
                 <span>{showDiagnostics ? 'ON' : 'OFF'}</span>
               </button>
+              <button
+                type="button"
+                onClick={() => setLcdDarkMode((enabled) => !enabled)}
+                className="flex w-full items-center justify-between border-b border-black/40 px-2 py-3 text-left text-sm font-black"
+              >
+                <span>DARKMODE</span>
+                <span className={`flex h-5 w-10 items-center border-2 border-black p-0.5 ${lcdDarkMode ? 'justify-end bg-black' : 'justify-start bg-transparent'}`}>
+                  <span className={`h-3 w-3 border border-black ${lcdDarkMode ? 'bg-[#c2c6b8]' : 'bg-black'}`} />
+                </span>
+              </button>
               <div className="px-2 py-3 text-xs font-bold leading-5">
                 <p>{connected ? deviceName || 'VERBUNDEN' : 'NICHT VERBUNDEN'}</p>
                 <p>{calibrationMessage}</p>
@@ -687,7 +702,7 @@ export default function App() {
           )}
         </div>
 
-        <section className={`relative min-h-0 flex-1 overflow-hidden bg-[#b9bdaf] text-black transition ${reconnectVisible || stale ? 'opacity-50' : ''}`}>
+        <section className={`relative min-h-0 flex-1 overflow-hidden bg-[#b9bdaf] text-black transition ${lcdDarkMode ? 'invert' : ''} ${reconnectVisible || stale ? 'opacity-50' : ''}`}>
           <div className="grid h-full grid-cols-2 grid-rows-[1.05fr_1fr_1fr_1fr_1fr_0.28fr] border-b border-black/70">
             <div className="col-span-2 border-b border-black/70 p-1.5 sm:p-2">
               <div className="font-mono text-[clamp(0.68rem,2.8vw,0.9rem)] font-black">WATT</div>
